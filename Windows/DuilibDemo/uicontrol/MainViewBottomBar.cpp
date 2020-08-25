@@ -13,6 +13,8 @@
 #include "TRTCScreenShareToolWnd.h"
 #include <Commdlg.h>
 #include "UserMassegeIdDefine.h"
+#include "AudioEffectViewController.h"
+#include "AudioEffectOldViewController.h"
 
 MainViewBottomBar::MainViewBottomBar(TRTCMainViewController * pMainWnd)
 {
@@ -27,6 +29,8 @@ MainViewBottomBar::~MainViewBottomBar()
 void MainViewBottomBar::InitBottomUI()
 {
     m_pMainWnd->getPaintManagerUI().AddPreMessageFilter(this);
+
+   
 }
 
 void MainViewBottomBar::UnInitBottomUI()
@@ -39,30 +43,7 @@ void MainViewBottomBar::Notify(TNotifyUI& msg)
 {
     if (msg.sType == _T("click"))
     {
-        if (msg.pSender->GetName() == _T("btn_change_view_mode") && m_pMainWnd)
-        {
-            CButtonUI* pBtn = static_cast<CButtonUI*>(msg.pSender);
-            if (pBtn)
-            {
-                if (m_bShowLectureModeUi)
-                {
-                    pBtn->SetForeImage(L"dest='4,1,20,19' source='0,0,16,18' res='videoview/gallery.png'");
-                    pBtn->SetText(L"画廊视图");
-                    m_bShowLectureModeUi = false;
-                    if (m_pMainWnd && m_pMainWnd->getTRTCVideoViewLayout())
-                        m_pMainWnd->getTRTCVideoViewLayout()->setLayoutStyle(ViewLayoutStyle_Lecture);
-                }
-                else
-                {
-                    m_bShowLectureModeUi = true;
-                    pBtn->SetForeImage(L"dest='4,1,20,19' source='0,0,16,18' res='videoview/lecture.png'");
-                    pBtn->SetText(L"演讲视图");
-                    if (m_pMainWnd && m_pMainWnd->getTRTCVideoViewLayout())
-                        m_pMainWnd->getTRTCVideoViewLayout()->setLayoutStyle(ViewLayoutStyle_Gallery);
-                }
-            }
-        }
-        else if (msg.pSender->GetName() == _T("btn_open_audio") && m_pMainWnd)
+        if (msg.pSender->GetName() == _T("btn_open_audio") && m_pMainWnd)
         {
             onClickMuteAudioBtn();
         }
@@ -94,7 +75,7 @@ void MainViewBottomBar::Notify(TNotifyUI& msg)
             CMenuUI* rootMenu = pMenu->GetMenuUI();
             if (rootMenu != NULL)
             {
-                // mic 
+                // mic
                 {
                     //title
                     CMenuElementUI* pNewTabContainer = new CMenuElementUI;
@@ -234,29 +215,29 @@ void MainViewBottomBar::Notify(TNotifyUI& msg)
             // 动态添加后重新设置菜单的大小
             pMenu->ResizeMenu();
         }
-		else if (msg.pSender->GetName() == _T("btn_open_screen")) {
-			if (CDataCenter::GetInstance()->m_localInfo.publish_sub_video) {
-				CButtonUI* pBtn = static_cast<CButtonUI*>(msg.pSender);
-				if (pBtn){
+        else if (msg.pSender->GetName() == _T("btn_open_screen")) {
+            if (CDataCenter::GetInstance()->m_localInfo.publish_sub_video) {
+                CButtonUI* pBtn = static_cast<CButtonUI*>(msg.pSender);
+                if (pBtn){
                     TRTCScreenCaptureSourceInfo info{};
                     info.type = TRTCScreenCaptureSourceTypeUnknown;
-					OpenScreenBtnEvent(info);
+                    OpenScreenBtnEvent(info);
                 }
-			}
-			else {
-				UiShareSelect uiShareSelect;
-				uiShareSelect.Create(m_pMainWnd->GetHWND(), _T("选择分享内容"), UI_WNDSTYLE_DIALOG, 0);
-				uiShareSelect.CenterWindow();
-				UINT nRet = uiShareSelect.ShowModal();
-				if (nRet == IDOK)
-				{
-					TRTCScreenCaptureSourceInfo info = uiShareSelect.getSelectWnd();
-					CButtonUI* pBtn = static_cast<CButtonUI*>(msg.pSender);
-					if (pBtn)
-						OpenScreenBtnEvent(info);
-				}
-			}		
-		}
+            }
+            else {
+                UiShareSelect uiShareSelect;
+                uiShareSelect.Create(m_pMainWnd->GetHWND(), _T("选择分享内容"), UI_WNDSTYLE_DIALOG, 0);
+                uiShareSelect.CenterWindow();
+                UINT nRet = uiShareSelect.ShowModal();
+                if (nRet == IDOK)
+                {
+                    TRTCScreenCaptureSourceInfo info = uiShareSelect.getSelectWnd();
+                    CButtonUI* pBtn = static_cast<CButtonUI*>(msg.pSender);
+                    if (pBtn)
+                        OpenScreenBtnEvent(info);
+                }
+            }        
+        }
         else if (msg.pSender->GetName() == _T("btn_open_pkview"))
         {
             CHorizontalLayoutUI* _pPKLayout = static_cast<CHorizontalLayoutUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("layout_container_pkview")));
@@ -312,6 +293,14 @@ void MainViewBottomBar::Notify(TNotifyUI& msg)
         else if (msg.pSender->GetName() == _T("btn_pkview_stop"))
         {
             TRTCCloudCore::GetInstance()->getTRTCCloud()->disconnectOtherRoom();
+        }
+        else if (msg.pSender->GetName() == _T("btn_member"))
+        {
+            onBtnMemberClick();
+        }
+        else if (msg.pSender->GetName() == _T("btn_music"))
+        {
+           OpenAudioEffectWnd();
         }
     }
 }
@@ -384,56 +373,56 @@ LRESULT MainViewBottomBar::MessageHandler(UINT uMsg, WPARAM wParam, LPARAM lPara
         delete text;
         text = nullptr;
     }
-	else if (uMsg == WM_USER_CMD_ScreenStart)
-	{
+    else if (uMsg == WM_USER_CMD_ScreenStart)
+    {
         LINFO(L"WM_USER_CMD_ScreenStart m_bStartScreenShare: %d", CDataCenter::GetInstance()->m_localInfo.publish_sub_video);
-		CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_open_screen")));
-		if (pBtn) {
-			pBtn->SetForeImage(L"dest='24,4,50,30' source='0,0,26,26' res='bottom/screen_share_start.png'");
-			pBtn->SetText(L"关闭分享");
-		}
+        CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_open_screen")));
+        if (pBtn) {
+            pBtn->SetForeImage(L"dest='24,4,50,30' source='0,0,26,26' res='bottom/screen_share_start.png'");
+            pBtn->SetText(L"关闭分享");
+        }
         CDataCenter::GetInstance()->m_localInfo.publish_sub_video = true;
         TRTCShareScreenToolMgr::GetInstance()->createToolWnd(CDataCenter::GetInstance()->getLocalUserID());
         //TRTCShareScreenToolMgr::GetInstance()->showScreenVideoView(true);
-        if(CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
-	}
-	else if (uMsg == WM_USER_CMD_ScreenEnd)
-	{
+        if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
+    }
+    else if (uMsg == WM_USER_CMD_ScreenEnd)
+    {
         LINFO(L"WM_USER_CMD_ScreenEnd m_bStartScreenShare: %d", CDataCenter::GetInstance()->m_localInfo.publish_sub_video);
-		CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_open_screen")));
-		if (pBtn) {
+        CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_open_screen")));
+        if (pBtn) {
             pBtn->SetForeImage(L"dest='24,4,50,30' source='0,0,26,26' res='bottom/screen_share_normal.png'");
-			pBtn->SetText(L"启动分享");
-		}
+            pBtn->SetText(L"启动分享");
+        }
         TRTCCloudCore::GetInstance()->stopScreen();
         TRTCShareScreenToolMgr::GetInstance()->destroyToolWnd();
 
         CDataCenter::GetInstance()->m_localInfo.publish_sub_video = false;
         if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
-	}
-	else if (uMsg == WM_USER_CMD_VodStart)
-	{
-		m_bPlay = true;
-		CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_play")));
-		if (pBtn) {
-			//pBtn->SetForeImage(L"dest='22,3,52,33' source='0,0,30,30' res='bottom/camera_open.png'");
-			pBtn->SetText(L"关闭播片");
-		}
+    }
+    else if (uMsg == WM_USER_CMD_VodStart)
+    {
+        m_bPlay = true;
+        CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_play")));
+        if (pBtn) {
+            //pBtn->SetForeImage(L"dest='22,3,52,33' source='0,0,30,30' res='bottom/camera_open.png'");
+            pBtn->SetText(L"关闭播片");
+        }
         LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
-		m_pMainWnd->getTRTCVideoViewLayout()->dispatchVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeSub);
+        m_pMainWnd->getTRTCVideoViewLayout()->dispatchVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeSub);
 
-	}
-	else if (uMsg == WM_USER_CMD_VodEnd)
-	{
-		CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_play")));
-		if (pBtn) {
-			//pBtn->SetForeImage(L"dest='22,3,52,33' source='0,0,30,30' res='bottom/camera_close.png'");
-			pBtn->SetText(L"启动播片");
-		}		
-		m_bPlay = false;
+    }
+    else if (uMsg == WM_USER_CMD_VodEnd)
+    {
+        CButtonUI* pBtn = static_cast<CButtonUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("btn_play")));
+        if (pBtn) {
+            //pBtn->SetForeImage(L"dest='22,3,52,33' source='0,0,30,30' res='bottom/camera_close.png'");
+            pBtn->SetText(L"启动播片");
+        }        
+        m_bPlay = false;
         LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
-		m_pMainWnd->getTRTCVideoViewLayout()->deleteVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeSub);
-	}
+        m_pMainWnd->getTRTCVideoViewLayout()->deleteVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeSub);
+    }
     return 0;
 }
 
@@ -480,42 +469,31 @@ void MainViewBottomBar::RefreshVideoDevice()
 
 void MainViewBottomBar::RefreshAudioDevice()
 {
-    std::wstring selectOldDevice = CDataCenter::GetInstance()->m_selectMic;
     bool publish_audio = CDataCenter::GetInstance()->m_localInfo.publish_audio;
     std::vector<TRTCCloudCore::MediaDeviceInfo> vecDevice = TRTCCloudCore::GetInstance()->getMicDevice();
-    std::wstring selectNewDevice = L"Unknow";
-    for (auto info : vecDevice) {
-        if (info._select) {
-            selectNewDevice = info._text; break;
-        }
-    }
-
-    bool bReSelectDevice = false;
     //没有设备变成有设备
-    if (selectOldDevice.compare(L"") == 0 && !publish_audio)
-    {
+    if ( !publish_audio && vecDevice.size() > 0) {
         onClickMuteAudioBtn();
-        bReSelectDevice = true;
     }
-
-    //选择设备被删除了
-    if (selectOldDevice.compare(selectNewDevice) != 0)
-        bReSelectDevice = true;
 
     //有设备变成没设备
-    if (publish_audio && vecDevice.size() <= 0)
-    {
+    if (publish_audio && vecDevice.size() <= 0) {
         onClickMuteAudioBtn();
-        bReSelectDevice = true;
     }
-    if (bReSelectDevice)
-    {
-        for (auto info : vecDevice)
-        {
-            if (info._select) {
-                TRTCCloudCore::GetInstance()->selectMicDevice(info._text); break;
-            }
-        }
+}
+
+void MainViewBottomBar::onBtnMemberClick()
+{
+    CVerticalLayoutUI* pMemberView = static_cast<CVerticalLayoutUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("layout_im_user_area")));
+    CVerticalLayoutUI* pBottomToolArea = static_cast<CVerticalLayoutUI*>(m_pMainWnd->getPaintManagerUI().FindControl(_T("layout_bottom_tool_area")));
+    m_bShowMemberWnd = !m_bShowMemberWnd;
+    if (m_bShowMemberWnd) {
+        pMemberView->SetVisible(true);
+        pBottomToolArea->SetFixedWidth(pBottomToolArea->GetFixedWidth() - 320);
+    }
+    else {
+        pMemberView->SetVisible(false);
+        pBottomToolArea->SetFixedWidth(pBottomToolArea->GetFixedWidth() + 320);
     }
 }
 
@@ -683,21 +661,64 @@ void MainViewBottomBar::onClickMuteAudioBtn()
 void MainViewBottomBar::OpenScreenBtnEvent(const TRTCScreenCaptureSourceInfo &source)
 {
     LINFO(L"OpenScreenBtnEvent, m_bStartScreenShare:%d", CDataCenter::GetInstance()->m_localInfo.publish_sub_video);
-	if (CDataCenter::GetInstance()->m_localInfo.publish_sub_video)
-	{		
-		TRTCCloudCore::GetInstance()->stopScreen();
+    if (CDataCenter::GetInstance()->m_localInfo.publish_sub_video)
+    {        
+        TRTCCloudCore::GetInstance()->stopScreen();
         CDataCenter::GetInstance()->m_localInfo.publish_sub_video = false;
         if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
-	}
-	else
-	{
-		RECT rect;
-		rect.bottom = 0;
-		rect.left = 0;
-		rect.right = 0;
-		rect.top = 0;
-		TRTCCloudCore::GetInstance()->selectScreenCaptureTarget(source, rect);
-		TRTCCloudCore::GetInstance()->startScreen(nullptr);
-	
     }
+    else
+    {
+        RECT rect;
+        rect.bottom = 0;
+        rect.left = 0;
+        rect.right = 0;
+        rect.top = 0;
+        TRTCCloudCore::GetInstance()->selectScreenCaptureTarget(source, rect);
+        if (CDataCenter::GetInstance()->m_bPublishScreenInBigStream) {
+            TRTCCloudCore::GetInstance()->startScreenCapture(nullptr, TRTCVideoStreamTypeBig, nullptr);
+        }
+        else {
+            TRTCCloudCore::GetInstance()->startScreen(nullptr);
+        }
+    }
+}
+void MainViewBottomBar::OpenAudioEffectWnd()
+{
+    if (CDataCenter::GetInstance()->m_bOpenDemoTestConfig)
+    {
+        if (m_pAudioEffectOldWnd)
+        {
+            if (AudioEffectOldViewController::getRef() > 0)
+            {
+                m_pAudioEffectOldWnd->Close(ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP);
+            }
+
+            m_pAudioEffectOldWnd = nullptr;
+        }
+
+        m_pAudioEffectOldWnd = new AudioEffectOldViewController();
+        m_pAudioEffectOldWnd->Create(m_pMainWnd->GetHWND(), _T("音乐"), WS_VISIBLE | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, WS_EX_WINDOWEDGE);
+        m_pAudioEffectOldWnd->CenterWindow();
+        m_pAudioEffectOldWnd->ResizeClient(540, 500);
+        m_pAudioEffectOldWnd->ShowWindow(true);
+    }
+    else
+    {
+        if (m_pAudioEffectWnd)
+        {
+            if (AudioEffectViewController::getRef() > 0)
+            {
+                m_pAudioEffectWnd->Close(ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP);
+            }
+
+            m_pAudioEffectWnd = nullptr;
+        }
+
+        m_pAudioEffectWnd = new AudioEffectViewController();
+        m_pAudioEffectWnd->Create(m_pMainWnd->GetHWND(), _T("音乐"), WS_VISIBLE | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, WS_EX_WINDOWEDGE);
+        m_pAudioEffectWnd->CenterWindow();
+        m_pAudioEffectWnd->ShowWindow(true);
+    }
+   
 }

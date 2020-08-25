@@ -14,27 +14,30 @@
 | Electron | [下载](http://liteavsdk-1252463788.cosgz.myqcloud.com/TXLiteAVSDK_TRTC_Electron_latest.zip) | [DOC](https://cloud.tencent.com/document/product/647/38548) | [DOC](https://cloud.tencent.com/document/product/647/38549) |[API](https://cloud.tencent.com/document/product/647/38551) |
 | 微信小程序 | [下载](http://liteavsdk-1252463788.cosgz.myqcloud.com/TRTC_WXMini_latest.zip) | [DOC](https://cloud.tencent.com/document/product/647/32399) | [DOC](https://cloud.tencent.com/document/product/647/32183) |[API](https://cloud.tencent.com/document/product/647/17018) |
 
-## 最新版本 7.1 @ 2020.03.27
-1. 全平台：优化混流预设模版易用性。
-1. 全平台：修复进房自动旁路的问题。
-1. 全平台：混流优化，提升成功率。
-1. Android：修复进房频繁开关AGC的时候，处理声音变成全零的问题。
-1. Android：C++ STL基础库全静态编译。
-1. Android：通话音量默认开启ANS、AGC，提高通话模式下的音质。
-1. Android：修复测速导致其他API调用响应较慢的问题。
-1. Android：修复被系统电话打断后上行音量翻倍及声音有噪音问题。
-1. iOS：修复进房前先 startLocalPreview 再进房会预览黑一下的问题。
-1. iOS：修复iOS9及更低版本下，无法切换扬声器模式的问题。
-1. iOS：解决部分机型iOS13.3系统回声严重的问题。
-1. iOS：修复偶现内存占用异常问题。
-1. iOS：BGM播放支持不带后缀的音频文件。
-1. Mac：修复硬编码率波动较大的问题，解决开关摄像头引起的码率波动问题。
-1. Mac: 屏幕分享支持从主路推流。
-1. windows：修复关闭AERO时全屏分享看不到透明窗口的问题。
-1. windows：修复win10缩略图捕获失效。
-1. windows：修复win8.0及更低版本屏幕采集概率失效问题。
-1. windows：修复偶现日志模块死锁问题。
-1. windows：屏幕分享支持从主路推流。
+## 最新版本 7.6 @ 2020.08.21
+TRTC 7.6 版本主要改进了 Windows 和 Mac 端的 SDK 稳定性，并优化了很多已知的无声和黑屏 BUG，全部升级点包括如下：
+- 全平台：优化 enterRoom 的协议策略，提升加入房间的速度，并提高成功率。
+- 全平台：优化同时订阅超多路音频时的总体性能消耗和卡顿问题。
+- 全平台：修复在不退房的情况下进入同一个房间时，SDK 不触发 onEnterRoom 回的 BUG。
+- 全平台：修复几种可能导致黑屏的偶现内部 BUG 的问题。
+- 全平台：修复提前调用 startRemoteSubStreamView 无法正常显示屏幕分享画面的问题。
+- Windows：新增 [updateLocalView](http://doc.qcloudtrtc.com/group__ITRTCCloud__cplusplus.html#ae5211a2739df8d8ec6017559b3aa0299) 和 [updateRemoteView](http://doc.qcloudtrtc.com/group__ITRTCCloud__cplusplus.html#a8c8247cbc679ea144ffb393b6b940c9e) 接口，用于优化实时调整 HWND 类型的渲染窗口时的体验。
+- Windows：新增 [getCurrentMicDeviceMute](http://doc.qcloudtrtc.com/group__ITRTCCloud__cplusplus.html#a8a8badf62eee1021f9315f11df0f597f) 接口用于获取当前 Windows PC 是否被设置为静音。
+- Windows：新增[setCurrentMicDeviceMute](http://doc.qcloudtrtc.com/group__ITRTCCloud__cplusplus.html#a8a8badf62eee1021f9315f11df0f597f) 接口用于将当前 Windows PC 设置为全局静音。
+- Windows：修复已知的几处句柄及GDI泄露。
+- Windows：修复多个已知的 Crash 问题。
+- Windows 修复摄像头和麦克风拔掉后重新插入不会自动开启设备的问题。
+- Mac：新增 [updateLocalView](http://doc.qcloudtrtc.com/group__TRTCCloud__ios.html#abf20f249b4b43fff64f944b4aefe54cb) 和 [updateRemoteView](http://doc.qcloudtrtc.com/group__TRTCCloud__ios.html#aa27f954e6301fb57a143b27429b63d87) 接口，用于优化实时调整 View 渲染区域时的体验。
+- Mac：新增 [getCurrentMicDeviceMute](http://doc.qcloudtrtc.com/group__TRTCCloud__ios.html#a6ba78519e9c98c1eecd365154882d53f) 接口用于获取当前 Mac 电脑是否被设置为静音。
+- Mac：新增[setCurrentMicDeviceMute](http://doc.qcloudtrtc.com/group__TRTCCloud__ios.html#a88569e62fe75b7ea98cc012169f22bfe) 接口用于将当前 Mac 电脑设置为全局静音。
+- Mac：屏幕分享开始支持分享指定窗口的指定区域。
+- iOS: 新增 [updateLocalView](http://doc.qcloudtrtc.com/group__TRTCCloud__ios.html#abf20f249b4b43fff64f944b4aefe54cb) 和 [updateRemoteView](http://doc.qcloudtrtc.com/group__TRTCCloud__ios.html#aa27f954e6301fb57a143b27429b63d87) 接口，用于优化实时调整 View 渲染区域时的体验。
+- iOS：修复在 iOS10 上背景音乐接口在传入特定规则的文件路径时会崩溃的 BUG。
+- iOS: 为 TRTCCloudDelegate 增加了 [onCapturedRawAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudDelegate__ios.html#aeaeaf9e7091c75e1a072d576a57d7f5c) 回调，并修改了其他几个回调函数的名称，依次修改为 [onLocalProcessedAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudDelegate__ios.html#a73a3e7de3c5c340957f119bb0f8744b0)、[onRemoteUserAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudDelegate__ios.html#aa392c17c27bae1505f148bf541b7746a)和 [onMixedPlayAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudDelegate__ios.html#a5a8a0bf6f8d02c33b2fe01c6175dfd4e)。
+- Android：修复频繁快速的 enterRoom 和 exitRoom 后偶先的无声问题。
+- Android：修复偶现的录屏推流黑屏的问题。
+- Android：为 TRTCCloudListener 增加了 [onCapturedRawAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudListener__android.html#abffd560f5b2b2322ea3980bc5a91d22e) 回调，并修改了其他几个回调函数的名称，依次修改为 [onLocalProcessedAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudListener__android.html#a62c526c6c30a66671260bdf0c5c64e46)、[onRemoteUserAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudListener__android.html#a4af98a7d668c150ea8e99e3085505902)和 [onMixedPlayAudioFrame](http://doc.qcloudtrtc.com/group__TRTCCloudListener__android.html#a580e94224357c38adf6ed883ab3321f7)。
+
 
 ## Demo 体验地址
 

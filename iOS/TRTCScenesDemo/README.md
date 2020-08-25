@@ -1,65 +1,58 @@
-本文主要介绍如何快速地将腾讯云 TRTC Demo 运行起来，您只需参考如下步骤依次执行即可。
+## 目录结构说明
+本目录包含的是多个场景案例的 Demo 源代码，每一个案例都有 model 和 ui 两个文件夹：
+- model 文件夹
+- ui 文件夹
 
-## 1. 创建新的应用
-进入腾讯云实时音视频 [控制台](https://console.cloud.tencent.com/rav) 创建一个新的应用，获得 SDKAppID，SDKAppID 是腾讯云后台用来区分不同实时音视频应用的唯一标识，在第4步中会用到。
-![](https://main.qcloudimg.com/raw/b9d211494b6ec8fcea765d1518b228a1.png)
-
-接下来，点击应用进入**快速上手**页面，参考页面上指引的“第一步”、“第二步”和“第三步”操作，即可快速跑通 Demo。
-
-## 2. 下载 SDK+Demo 源码
-“快速上手”页面中第一步里的几个链接地址分别为各个平台的 SDK 和 Demo 源码，点击会跳转到 Github 上，如果您当前网络访问 Github 太慢，可以在项目首页中找到镜像下载地址。
-
-![](https://main.qcloudimg.com/raw/d56b4e4434da42d1a3b8e3540cf6718e.png)
-
-## 3. 查看并拷贝加密密钥
-点击**查看密钥**按钮，即可看到用于计算 UserSig 的加密密钥，点击“复制密钥”按钮，可以将密钥拷贝到剪贴板中。
-
-![](https://main.qcloudimg.com/raw/5843542ec2e0446d326d7d44f96a5ec0.png)
-
-<h2 id="CopyKey"> 4. 粘贴密钥到Demo工程的指定文件中 </h2>
-我们在各个平台的 Demo 的源码工程中都提供了一个叫做 “GenerateTestUserSig” 的文件，它可以通过 HMAC-SHA256 算法本地计算出 UserSig，用于快速跑通 Demo。
-
-| 语言版本 |  适用平台 | GenerateTestUserSig 的源码位置 |
-|:---------:|:---------:|:---------:|
-| Objective-C | iOS  | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/iOS/TRTCDemo/TRTC/GenerateTestUserSig.h)|
-| Objective-C | Mac  | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/Mac/TRTCDemo/TRTC/GenerateTestUserSig.h)|
-| Java | Android  | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/Android/TRTCDemo/app/src/main/java/com/tencent/liteav/demo/trtc/debug/GenerateTestUserSig.java) |
-| C++ | Windows | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/Windows/DuilibDemo/GenerateTestUserSig.h)|
-| C# | Windows | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/Windows/CSharpDemo/GenerateTestUserSig.cs)|
-| Javascript | Web | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/H5/js/debug/GenerateTestUserSig.js)|
-| Javascript | 微信小程序 | [Github](https://github.com/tencentyun/TRTCSDK/tree/master/WXMini/pages/webrtc-room/debug/GenerateTestUserSig.js)|
-
-
-您只需要将第1步中获得的 SDKAppID 和第3步中获得的加密密钥拷贝到文件中的指定位置即可，如下所示：
-
-![](https://main.qcloudimg.com/raw/de28c1eb03e779ddb7131dc2d666d8d2.jpg)
-
-> !安全警告：本地计算 UserSig 的做法虽然能够工作，但仅适合于调试 Demo 的场景，不适用于线上产品。
-> 
-> 这是因为客户端代码中的 SECRETKEY 很容易被反编译逆向破解，尤其是 Web 端的代码被破解的难度几乎为零。一旦您的密钥泄露，攻击者就可以计算出正确的 UserSig 来盗用您的腾讯云流量。
-> 
-> [安全方案](https://cloud.tencent.com/document/product/647/17275#Server)：将 UserSig 的计算代码和加密密钥放在您的业务服务器上，然后由 App 按需向您的服务器获取实时算出的 UserSig。由于攻破服务器的成本要远高于破解客户端 App，所以服务器计算的方案能够更好地保护您的加密密钥。
-
-## 5. 编译运行
-在终端窗口中 cd 到 Podfile 所在目录执行以下命令安装 TRTC SDK
 ```
-pod install
+├─ TRTCScenesDemo // TRTC场景化Demo，包括视频通话、语音通话、视频互动直播、语音聊天室
+|  │─ Podfile                    //Pod描述文件
+|  │─ TXLiteAVDemo
+|  │    ├─ App                   // 程序入口界面
+|  │    ├─ AudioSettingKit       // 音效面板，包含BGM播放，变声，混响，变调等效果
+|  │    ├─ BeautySettingKit      // 美颜面板，包含美颜，滤镜，动效等效果
+|  │    ├─ Debug                 // 包含 GenerateTestUserSig，用于本地生成测试用的 UserSig
+|  │    ├─ Login                 // 一个演示性质的简单登录界面
+|  │    ├─ TRTCMeetingDemo       // 场景一：多人会议，类似腾讯会议，包含屏幕分享
+|  │    ├─ TRTCVoiceRoomDemo     // 场景二：语音聊天室，也叫语聊房，多人音频聊天场景
+|  │    ├─ TRTCLiveRoomDemo      // 场景三：互动直播，包含连麦、PK、聊天、点赞等特性
+|  │    ├─ TRTCAudioCallDemo     // 场景四：音频通话，展示双人音频通话，有离线通知能力
+|  │    ├─ TRTCVideoCallDemo     // 场景五：视频通话，展示双人视频通话，有离线通知能力
 ```
-或使用以下命令更新本地库版本：
-```
-pod update
-```
-使用 XCode （9.0 以上的版本） 打开源码目录下的 trtcScenesDemo.xcworkspace 工程，编译并运行 Demo 工程即可。
 
-## 常见问题
+## 如何跑通Demo
 
-### 1. 开发环境有什么要求？
-- Xcode 9.0+
-- 请确保您的项目已设置有效的开发者签名。
+#### 步骤1：检查环境要求
+- Xcode 11.0及以上版本
+- 请确保您的项目已设置有效的开发者签名
 
-### 2. 两台手机运行 Demo，为什么看不到彼此的画面？
-请确保两台手机在运行 Demo 时使用的是不同的 UserID，TRTC 不支持同一个 UserID （除非 SDKAppID 不同）在两个终端同时使用。
-![](https://main.qcloudimg.com/raw/c7b1589e1a637cf502c6728f3c3c4f99.png)
+#### 步骤2：创建新的应用
+1. 登录实时音视频控制台，选择【开发辅助】>【[快速跑通Demo](https://console.cloud.tencent.com/trtc/quickstart)】。
+2. 单击【立即开始】，输入应用名称，例如`TestTRTC`，单击【创建应用】。
+3. 单击【我已下载】，会看到页面上展示了您的 SDKAppID 和密钥。
 
-### 3. 防火墙有什么限制？
-由于 SDK 使用 UDP 协议进行音视频传输，所以对 UDP 有拦截的办公网络下无法使用，如遇到类似问题，请参考文档：[应对公司防火墙限制](https://cloud.tencent.com/document/product/647/34399)。
+#### 步骤3：修改工程中的 SDKAppID 和密钥
+1. 打开 Debug 目录下的 [GenerateTestUserSig.h](debug/GenerateTestUserSig.h) 文件。
+2. 配置`GenerateTestUserSig.h`文件中的两个参数：
+  - SDKAPPID：替换该变量值为上一步骤中在页面上看到的 SDKAppID。
+  - SECRETKEY：替换该变量值为上一步骤中在页面上看到的密钥。
+
+>注意：
+>本文提到的生成 UserSig 的方案是在客户端代码中配置 SECRETKEY，该方法中 SECRETKEY 很容易被反编译逆向破解，一旦您的密钥泄露，攻击者就可以盗用您的腾讯云流量，因此**该方法仅适合本地跑通 Demo 和功能调试**。
+>正确的 UserSig 签发方式请参见 [服务端生成 UserSig](https://cloud.tencent.com/document/product/647/17275#Server)。
+
+#### 步骤4：检查 SDK 是否存在
+- **如果您使用 ZIP 压缩包**
+如果您是直接下载的 zip 压缩包，解压后会发现 SDK 目录下已经包含了对应的 framework，此时您只需要用 XCode 打开 TXLiteAVDemo.xcworkspace 文件，并检查是否有正确引入 SDK 目录下的 framework 即可。
+
+- **如果您克隆 Github 仓库**
+如果您是从 Github 仓库上直接 clone 的源代码，会发现 SDK 目录下是空的，并不包含 framework。此时您可以直接在控制台中切换到 `Podfile` 所在目录，并执行如下命令以安装需要的 SDK：
+  ```
+  pod install
+  ```
+  或者使用以下命令更新本地的 SDK 版本：
+  ```
+  pod update
+  ```
+
+#### 步骤5：编译运行
+使用 XCode （10.0 以上的版本，建议使用最新版Xcode） 打开源码目录下的 TXLiteAVDemo.xcworkspace 工程，设置有效的开发者签名，连接 iPhone／iPad 测试设备后，编译并运行 Demo 工程即可。

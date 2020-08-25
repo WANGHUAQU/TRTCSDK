@@ -187,6 +187,7 @@ void TRTCLoginViewController::onBtnEnterRoom()
     }
 
     info._userSig = GenerateTestUserSig::instance().genTestUserSig(info._userId);
+
     if (info._userSig == "")
     {
         if (m_pLoginStatus != nullptr)
@@ -263,28 +264,27 @@ LRESULT TRTCLoginViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM 
         InitLoginView();
         return 0;
     }
-    else if (uMsg == WM_CLOSE)
-    {
+    else if (uMsg == WM_CLOSE) {
         if (wParam == ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP)
             m_bQuit = false;
-        else
-        {
+        else {
             LINFO(L"CTRTCLoginWnd:: App quit begin");
             if(m_pSettingWnd) {
-                if(TRTCSettingViewController::getRef() > 0)
-                    m_pSettingWnd->Close(ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP);
+                if (TRTCSettingViewController::getRef() > 0) {
+                    if (::IsWindow(m_pSettingWnd->GetHWND())) {
+                        ::SendMessage(m_pSettingWnd->GetHWND(),WM_CLOSE,(WPARAM)ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP,0L);
+                    }
+                }
                 m_pSettingWnd = nullptr;
             }
             m_bQuit = true;
         }
     }
-    else if (uMsg == WM_DESTROY)
-    {
+    else if (uMsg == WM_DESTROY) {
         if (m_bQuit)
             ::PostQuitMessage(0L);
     }
-    else if (uMsg == WM_NCACTIVATE)
-    {
+    else if (uMsg == WM_NCACTIVATE) {
         if (!::IsIconic(*this)) return (wParam == 0) ? TRUE : FALSE;
     }
     LRESULT lRes = 0;

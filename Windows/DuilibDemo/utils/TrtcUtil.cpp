@@ -1,6 +1,7 @@
 #include "TrtcUtil.h"
 #include <time.h>
 #include <windows.h>
+#include <cmath>
 #include "TRTCCloudDef.h"
 
 std::string TrtcUtil::genRandomNumString(int length)
@@ -167,4 +168,38 @@ void TrtcUtil::convertCaptureResolution(int resolution, long & width, long & hei
     default:
         break;
     }
+}
+
+std::wstring TrtcUtil::convertMSToTime(long lCurMS, long lDurationMS)
+{
+    std::wstring strTime = L"00:00/00:00";
+
+    int nTotalDurationSecond = lDurationMS / 1000;
+    int nDurationMinute = nTotalDurationSecond / 60;
+    int nDurationSecond = nTotalDurationSecond % 60;
+
+    int nTotalCurSecond = lCurMS / 1000;
+    int nCurMinute = nTotalCurSecond / 60;
+    int nCurSecond = nTotalCurSecond % 60;
+
+    wchar_t buf[1024];
+    wsprintf(buf, L"%02d:%02d/%02d:%02d", nCurMinute, nCurSecond, nDurationMinute, nDurationSecond);
+
+    strTime = buf;
+
+    return strTime;
+}
+
+std::map<int,std::string> TrtcUtil::split(char * str, const char * pattern)
+{
+    std::map<int,std::string> resultMap;
+    char* tmpStr = strtok(str, pattern);
+    int num = 0;
+    while (tmpStr != NULL)
+    {
+        resultMap[num] = (std::string(tmpStr));
+        tmpStr = strtok(NULL, pattern);
+        num++;
+    }
+    return resultMap;
 }

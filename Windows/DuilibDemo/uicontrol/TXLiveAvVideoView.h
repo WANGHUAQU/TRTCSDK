@@ -14,7 +14,6 @@
 using namespace DuiLib;
 #include <vector>
 
-
 class CCriticalSection
 {
 public:
@@ -36,6 +35,9 @@ protected:
 };
 
 class CTXLiveAvVideoViewMgr;
+class CDNLivePlayerViewMgr;
+extern  CTXLiveAvVideoViewMgr* getShareViewMgrInstance();
+extern  CDNLivePlayerViewMgr* getCDNLivePlayerViewMgr();
 class TXLiveAvVideoView : public CControlUI, public IMessageFilterUI
 {
     DECLARE_DUICONTROL(TXLiveAvVideoView)
@@ -59,17 +61,16 @@ public:
     /**
     * \brief：设置View绑定参数
     * \param：userId - 需要渲染画面的userid，如果是本地画面，则传空字符串。
-    * \param：engine - trtcengine实例，用户注册视频数据回调。
+    * \param：type - 需要渲染的视频流类型。
     * \param：bLocal - 渲染本地画面，SDK返回的userID为""
     */
-    bool RegEngine(const std::string& userId, TRTCVideoStreamType type, ITRTCCloud* engine, bool bLocal = false);
+    bool SetRenderInfo(const std::string& userId, TRTCVideoStreamType type, bool bLocal = false);
 
     /**
     * \brief：移除View绑定参数
     * \param：userId - 需要渲染画面的userid
-    * \param：engine - trtcengine实例，用户注册视频数据回调。
     */
-    void RemoveEngine(ITRTCCloud* engine);
+    void RemoveRenderInfo();
 
     /**
     * \brief：判断view是否被占用
@@ -105,17 +106,20 @@ public:
     static std::multimap<std::pair<std::string, TRTCVideoStreamType>, std::vector<std::wstring>> g_mapEventLogText;
     static std::multimap<std::pair<std::string, TRTCVideoStreamType>, std::wstring> g_mapDashboardLogText;
     static ViewDashboardStyleEnum g_nStyleDashboard;     //0 关闭， 1打开， 2暂定
-
+     //* 支持rbga数据处理，如需自定义数据，需重载此函数。
+    virtual bool AppendVideoFrame(unsigned char * data, uint32_t length, uint32_t width, uint32_t height, TRTCVideoPixelFormat videoFormat, TRTCVideoRotation rotation);
 public:
     void GetVideoResolution(int& width, int& height);
     UINT GetPaintMsgID();
+    std::string getUserId();
+
+    HWND getWnd() { return m_hWnd; }
 protected:
     //IMessageFilterUI
     virtual LRESULT MessageHandler(UINT uMsg, WPARAM wParam, LPARAM lParam, bool& bHandled);
     //CControlUI
     virtual bool DoPaint(HDC hDC, const RECT& rcPaint, CControlUI* pStopControl = NULL);
-    //* 支持rbga数据处理，如需自定义数据，需重载此函数。
-    virtual bool AppendVideoFrame(unsigned char * data, uint32_t length, uint32_t width, uint32_t height, TRTCVideoPixelFormat videoFormat, TRTCVideoRotation rotation);
+   
     virtual void DoEvent(TEventUI& event);
 
 protected:
@@ -152,7 +156,7 @@ private:
     BITMAPINFO m_bmi;
     bool m_bPause = false;
     std::string m_userId;
-	TRTCVideoStreamType m_type;
+    TRTCVideoStreamType m_type;
 private:
     UINT m_nDefineMsg = 0;  //自定义win32消息，用来通知主线程刷新
     HWND m_hWnd = nullptr;

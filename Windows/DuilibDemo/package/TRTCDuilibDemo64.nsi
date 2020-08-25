@@ -71,6 +71,8 @@ Section "MainSection" SEC01
   CreateDirectory "$INSTDIR\trtcskin\msgbox"
   CreateDirectory "$INSTDIR\trtcskin\setting"
   CreateDirectory "$INSTDIR\trtcskin\videoview"
+  CreateDirectory "$INSTDIR\trtcskin\userlist"
+  CreateDirectory "$INSTDIR\trtcskin\music"
 
   SetOverwrite on
   
@@ -94,6 +96,10 @@ Section "MainSection" SEC01
   File "..\Build\Bin\Win64\Release\trtcskin\setting\*.*"
   SetOutPath "$INSTDIR\trtcskin\videoview"
   File "..\Build\Bin\Win64\Release\trtcskin\videoview\*.*"
+  SetOutPath "$INSTDIR\trtcskin\userlist"
+  File "..\Build\Bin\Win32\Release\trtcskin\userlist\*.*"
+  SetOutPath "$INSTDIR\trtcskin\music"
+  File "..\Build\Bin\Win32\Release\trtcskin\music\*.*"
 
   SetOutPath "$INSTDIR\trtcres"
   File "..\Build\Bin\Win64\Release\trtcres\*.*"
@@ -160,6 +166,8 @@ Section Uninstall
   Delete "$INSTDIR\trtcskin\msgbox\*.*"
   Delete "$INSTDIR\trtcskin\setting\*.*"
   Delete "$INSTDIR\trtcskin\videoview\*.*"
+  Delete "$INSTDIR\trtcskin\userlist\*.*"
+  Delete "$INSTDIR\trtcskin\music\*.*"
 
   RMDir "$SMPROGRAMS\TRTCDuilibDemo"
   RMDir "$INSTDIR\trtcres"
@@ -170,6 +178,8 @@ Section Uninstall
   RMDir "$INSTDIR\trtcskin\msgbox"
   RMDir "$INSTDIR\trtcskin\setting"
   RMDir "$INSTDIR\trtcskin\videoview"
+  RMDir "$INSTDIR\trtcskin\userlist"
+  RMDir "$INSTDIR\trtcskin\music"
   RMDir "$INSTDIR\trtcskin"
   RMDir "$INSTDIR"
 

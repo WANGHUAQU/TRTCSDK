@@ -7,7 +7,7 @@ buildscript {
         google()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.5.1'
+        classpath 'com.android.tools.build:gradle:3.5.3'
 
 
         // NOTE: Do not place your application dependencies here; they belong
@@ -32,15 +32,15 @@ task clean(type: Delete) {
 }
 
 ext {
-    compileSdkVersion = 25
+    compileSdkVersion = 26
     buildToolsVersion = "28.0.3"
-    supportSdkVersion = "25.4.0"
-    minSdkVersion = 16
+    supportSdkVersion = "26.0.1"
+    minSdkVersion = 19
     targetSdkVersion = 26
     liteavSdk="com.tencent.liteav:LiteAVSDK_TRTC:latest.release"
-    imSdk = 'com.tencent.imsdk:imsdk:4.6.56'
+    imSdk = 'com.tencent.imsdk:imsdk:4.9.1'
     versionCode = 1
     versionName = "v1.0"
-    ndkAbi = 'armeabi-v7a'//,'armeabi-v7a', 'arm64-v8a'
+    ndkAbi = 'armeabi'//,'armeabi-v7a', 'arm64-v8a'
     aekit_version = '1.0.10-cloud'
 }

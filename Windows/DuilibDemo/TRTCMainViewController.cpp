@@ -25,7 +25,7 @@
 #include "GenerateTestUserSig.h"
 #include "utils/TrtcUtil.h"
 #include "ITXLiteAVNetworkProxy.h"
-
+#include "userlist/UserListController.h"
 
 //////////////////////////////////////////////////////////////////////////TXLiveAvVideoView
 //duilib要实现一些特殊的功能，需要集成布局，做成最基础布局。   
@@ -57,36 +57,6 @@ public:
 protected:
     virtual void DoEvent(TEventUI& event) {
         CControlUI::DoEvent(event);
-        if (event.Type == UIEVENT_MOUSEENTER)
-        {
-            m_pBottomTool->SetVisible(true);
-            if (m_pTopTool)
-                m_pTopTool->SetVisible(true);
-            
-        }
-        else if (event.Type == UIEVENT_MOUSELEAVE)
-        {
-            RECT itemRc = GetPos();
-            RECT winRc = { 0 };
-            POINT point;
-            ::GetCursorPos(&point);
-            ::GetWindowRect(m_pMainWnd->GetHWND(), &winRc);
-            itemRc.right = winRc.left + itemRc.right - itemRc.left - 5;
-            itemRc.left = itemRc.left + winRc.left + 5;
-            itemRc.bottom = winRc.top + itemRc.bottom - itemRc.top + 5;
-            itemRc.top = itemRc.top + winRc.top - 5;
-            BOOL bRet = ::PtInRect(&itemRc, point);
-            if (!bRet) 
-            {
-                m_pBottomTool->SetVisible(false);
-                if (m_pTopTool)
-                    m_pTopTool->SetVisible(false);
-            }
-        }
-        else if (event.Type == UIEVENT_BUTTONUP)
-        {
-
-        }
     };
     virtual void SetPos(RECT rc, bool bNeedInvalidate /* = true */) 
     {
@@ -134,10 +104,12 @@ TRTCMainViewController::TRTCMainViewController()
 {
     m_pMainViewBottomBar = new MainViewBottomBar(this);
     m_pVideoViewLayout = new TRTCVideoViewLayout();
+    m_pUserListController = new UserListController(this);
 }
 
 TRTCMainViewController::~TRTCMainViewController()
 {
+   
     TRTCCloudCore::GetInstance()->removeSDKMsgObserverByHwnd(GetHWND());
     m_pmUI.RemoveNotifier(this);
     m_pmUI.RemoveNotifier(m_pMainViewBottomBar);
@@ -145,7 +117,30 @@ TRTCMainViewController::~TRTCMainViewController()
 
 void TRTCMainViewController::Notify(TNotifyUI & msg)
 {
-
+    if (msg.sType == _T("click"))
+    {
+        if (msg.pSender->GetName() == _T("lecture_change_remote_visible"))
+        {
+            if (m_pVideoViewLayout != nullptr)
+            {
+                m_pVideoViewLayout->changeLectureviewVisable();
+            }
+        }
+        else  if (msg.pSender->GetName() == _T("btn_forward"))
+        {
+            if (m_pVideoViewLayout != nullptr)
+            {
+                m_pVideoViewLayout->turnPage(true);
+            }
+        }
+        else  if (msg.pSender->GetName() == _T("btn_backword"))
+        {
+            if (m_pVideoViewLayout != nullptr)
+            {
+                m_pVideoViewLayout->turnPage(false);
+            }
+        }
+    }
 }
 
 void TRTCMainViewController::enterRoom()
@@ -155,7 +150,7 @@ void TRTCMainViewController::enterRoom()
     if (socks5_host.empty() == false && socks5_port > 0)
     {
         ITXNetworkProxy* proxy = createTXNetworkProxy();
-        proxy->setSocks5Proxy(socks5_host.c_str(), socks5_port);
+        proxy->setSocks5Proxy(socks5_host.c_str(), socks5_port, "", "");
         destroyTXNetworkProxy(&proxy);
     }
 
@@ -165,6 +160,7 @@ void TRTCMainViewController::enterRoom()
         m_pBaseLayoutUI->InitBaseLayoutUI();
     m_pVideoViewLayout->initRenderUI();
     m_pMainViewBottomBar->InitBottomUI();
+    m_pUserListController->InitUserListUI();
 
     TRTCCloudCore::GetInstance()->Init();
 
@@ -173,19 +169,20 @@ void TRTCMainViewController::enterRoom()
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_MemberEnter, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_MemberExit, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_Error, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_Warning, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_Dashboard, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_DeviceChange, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_SDKEventMsg, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_ConnectionLost, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_TryToReconnect, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_ConnectionRecovery, GetHWND());
-	TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_SubVideoAvailable, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_SubVideoAvailable, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_AuidoAvailable, GetHWND());
-	TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_VideoAvailable, GetHWND());
-	TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_ScreenStart, GetHWND());
-	TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_ScreenEnd, GetHWND());
-	TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_VodStart, GetHWND());
-	TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_VodEnd, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_VideoAvailable, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_ScreenStart, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_ScreenEnd, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_VodStart, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_VodEnd, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_UserVoiceVolume, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_PKConnectStatus, GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_PKDisConnectStatus, GetHWND());
@@ -197,44 +194,25 @@ void TRTCMainViewController::enterRoom()
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_OnStartPublishinge,GetHWND());
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_OnStopPublishing,GetHWND());
 
+    TRTCCloudCore::GetInstance()->getTRTCCloud()->setLocalVideoRenderCallback(TRTCVideoPixelFormat_BGRA32, TRTCVideoBufferType_Buffer, (ITRTCVideoRenderCallback*)getShareViewMgrInstance());
+
     //设置代理环境
     //TRTCCloudCore::GetInstance()->getTRTCCloud()->callExperimentalAPI("{\"api\": \"setProxy\",\"params\" :{\"socks5_host\" : \"120.27.153.72\",\"socks5_port\" : 35726,\"socks5_auth\" : \"\", \"http_host\": \"45.125.32.182\",\"http_port\" : 3128,\"http_auth\" : \"\"}}");
 
     //设置连接环境
-    int nLinkTestServer = CDataCenter::GetInstance()->m_nLinkTestServer;
-    {
-        typedef void(*PFN_setNetEnv)(int bTestEnv);
-        HMODULE hLiteAV = ::GetModuleHandleW(L"liteav.dll");
-        PFN_setNetEnv pfn_setNetEnv = (PFN_setNetEnv)::GetProcAddress(hLiteAV, "setNetEnv");
-        if (pfn_setNetEnv)
-        {
-            pfn_setNetEnv(nLinkTestServer);
-        }
-    }
+    std::string cmd = format("{\"api\": \"setNetEnv\",\"params\" :{\"env\" : %d}}", CDataCenter::GetInstance()->m_nLinkTestServer);
+    TRTCCloudCore::GetInstance()->getTRTCCloud()->callExperimentalAPI(cmd.c_str());
+
     TRTCCloudCore::GetInstance()->getTRTCCloud()->setDefaultStreamRecvMode(\
         CDataCenter::GetInstance()->m_bAutoRecvAudio, CDataCenter::GetInstance()->m_bAutoRecvVideo);
 
+    if (CDataCenter::GetInstance()->audio_quality_ != TRTCAudioQualityUnSelect ) {
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->setAudioQuality((TRTCAudioQuality)CDataCenter::GetInstance()->audio_quality_);
+    }
+	InternalEnterRoom();
+
     //进入房间
     LocalUserInfo& info = CDataCenter::GetInstance()->getLocalUserInfo();
-    TRTCParams params;
-    params.sdkAppId = GenerateTestUserSig::SDKAPPID;
-    params.roomId = info._roomId;//std::to_string(info._roomId).c_str();
-    std::string userid = info._userId.c_str();
-    params.userId = (char*)userid.c_str();
-    std::string userSig = info._userSig.c_str();
-    params.userSig = (char*)userSig.c_str();
-    std::string privMapEncrypt = "";
-    params.privateMapKey = (char*)privMapEncrypt.c_str();
-    params.role = CDataCenter::GetInstance()->m_roleType;
-
-    // 默认旁路streamId = sdkappid_roomid_userid_main
-    if(CDataCenter::GetInstance()->m_strCustomStreamId.empty())
-        CDataCenter::GetInstance()->m_strCustomStreamId = format("%d_%d_%s_main",GenerateTestUserSig::SDKAPPID, info._roomId, info._userId.c_str());
-    params.streamId = CDataCenter::GetInstance()->m_strCustomStreamId.c_str();
-
-
-    TRTCCloudCore::GetInstance()->getTRTCCloud()->enterRoom(params, CDataCenter::GetInstance()->m_sceneParams);
-
     //此处为了sdk本地视频回调时，userid = "",做的特殊处理
     VideoCanvasContainer::localUserId = UTF82Wide(info._userId);
 
@@ -245,7 +223,7 @@ void TRTCMainViewController::enterRoom()
     }
 
     //设置默认配置到SDK
-    if (params.role == TRTCRoleAnchor)
+    if (CDataCenter::GetInstance()->m_roleType == TRTCRoleAnchor)
     {
         TRTCCloudCore::GetInstance()->getTRTCCloud()->setVideoEncoderParam(CDataCenter::GetInstance()->m_videoEncParams);
         TRTCCloudCore::GetInstance()->getTRTCCloud()->setLocalViewMirror(CDataCenter::GetInstance()->m_bLocalVideoMirror);
@@ -285,14 +263,13 @@ void TRTCMainViewController::enterRoom()
         TRTCCloudCore::GetInstance()->getTRTCCloud()->setPriorRemoteVideoStreamType(TRTCVideoStreamTypeSmall);
     }
 
-    //打开本地预览
-
     //处理是否纯音频模式
     bool bAudioSenceStyle = false;
     if ( CDataCenter::GetInstance()->m_sceneParams ==  TRTCAppSceneAudioCall || CDataCenter::GetInstance()->m_sceneParams == TRTCAppSceneVoiceChatRoom)
         bAudioSenceStyle = true;
 
-    if (!(bAudioSenceStyle == true || params.role == TRTCRoleAudience))
+    
+    if (!(bAudioSenceStyle == true || CDataCenter::GetInstance()->m_roleType == TRTCRoleAudience))
     {
         m_pVideoViewLayout->dispatchVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
     }
@@ -303,7 +280,7 @@ void TRTCMainViewController::enterRoom()
     {
         std::vector<TRTCCloudCore::MediaDeviceInfo> cameraInfo = TRTCCloudCore::GetInstance()->getCameraDevice();
         LINFO(L"CTRTCMainWnd::InitWindow() camera.size[%d]\n", cameraInfo.size());
-        if (cameraInfo.size() > 0 && params.role != TRTCRoleAudience)
+        if (cameraInfo.size() > 0 && CDataCenter::GetInstance()->m_roleType != TRTCRoleAudience)
         {
             TRTCCloudCore::GetInstance()->startPreview();
             CDataCenter::GetInstance()->m_localInfo.publish_main_video = true; 
@@ -315,7 +292,7 @@ void TRTCMainViewController::enterRoom()
         CDataCenter::GetInstance()->m_localInfo.publish_main_video = false;
     }
 
-    if (params.role != TRTCRoleAudience)
+    if (CDataCenter::GetInstance()->m_roleType != TRTCRoleAudience)
     {
         TRTCCloudCore::GetInstance()->getTRTCCloud()->startLocalAudio();
         CDataCenter::GetInstance()->m_localInfo.publish_audio = true;
@@ -346,6 +323,63 @@ void TRTCMainViewController::enterRoom()
     TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig,strFormat.GetData(), true);
 }
 
+void TRTCMainViewController::switchLivePlayerMode(LivePlayerSourceType emLivePlayerSourceType)
+{
+    if (CDataCenter::GetInstance()->m_emLivePlayerSourceType == emLivePlayerSourceType)
+    {
+        return;
+    }
+    if (emLivePlayerSourceType == TRTC_CDN)
+    {
+        CDataCenter::GetInstance()->m_emLivePlayerSourceType = TRTC_CDN;
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->removeCallback((ITRTCCloudCallback*)TRTCCloudCore::GetInstance()->GetITRTCCloudCallback());
+        m_pVideoViewLayout->HideAllVideoViewExceptMain();
+
+        VideoCanvasContainer* pVideoCanvasContainer = m_pVideoViewLayout->GetMainRenderView()->_viewLayout;
+        if (pVideoCanvasContainer == NULL)
+        {
+            return;
+        }
+        TXLiveAvVideoView *pTXLiveAvVideoView = pVideoCanvasContainer->getLiveAvVideoView();
+        if (pTXLiveAvVideoView == NULL)
+        {
+            return;
+        }
+        string  strUrl = CDataCenter::GetInstance()->GetCdnUrl(pTXLiveAvVideoView->getUserId());
+        if (strUrl.empty())
+        {
+            return;
+        }
+
+        TRTCCloudCore::GetInstance()->getTXLivePlayer()->setCallback((ITXLivePlayerCallback*)getCDNLivePlayerViewMgr(), (void*)pTXLiveAvVideoView);
+        TRTCCloudCore::GetInstance()->getTXLivePlayer()->setOutputVideoFormat(TXE_OUTPUT_VIDEO_FORMAT_YUV420);
+        TRTCCloudCore::GetInstance()->getTXLivePlayer()->startPlay(strUrl.c_str(), PLAY_TYPE_LIVE_FLV);
+
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->exitRoom();
+    }
+    else if (emLivePlayerSourceType == TRTC_RTC)
+    {
+        CDataCenter::GetInstance()->m_emLivePlayerSourceType = TRTC_RTC;
+
+        TRTCCloudCore::GetInstance()->getTXLivePlayer()->setCallback(nullptr, nullptr);
+        TRTCCloudCore::GetInstance()->getTXLivePlayer()->stopPlay();
+
+
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->addCallback((ITRTCCloudCallback*)(TRTCCloudCore::GetInstance()->GetITRTCCloudCallback()));
+       
+        RemoteUserInfoList remoteUser = CDataCenter::GetInstance()->m_remoteUser;
+        for (RemoteUserInfoList::iterator itor = remoteUser.begin(); itor != remoteUser.end();
+            itor++)
+        {
+            onRemoteUserLeaveRoom(itor->first);
+        }
+
+        InternalEnterRoom();
+
+        m_pVideoViewLayout->RestoreAllVideoView();
+    }
+}
+
 void TRTCMainViewController::CheckLocalUiStatus()
 {
     std::vector<TRTCCloudCore::MediaDeviceInfo> micInfo = TRTCCloudCore::GetInstance()->getMicDevice();
@@ -353,7 +387,7 @@ void TRTCMainViewController::CheckLocalUiStatus()
     std::vector<TRTCCloudCore::MediaDeviceInfo> speakerInfo = TRTCCloudCore::GetInstance()->getSpeakDevice();
     std::wstring strTip = L"Error::";
     bool bShowMsgBox = false;
-    bool publish_audio = false;
+    bool publish_audio = true;
     bool publish_main_video = true;
     if (micInfo.size() <= 0)
     {
@@ -389,30 +423,48 @@ void TRTCMainViewController::CheckLocalUiStatus()
         publish_main_video = false;
         publish_audio = false;
     }
-    
+   
+
     LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->m_localInfo;
     if (!publish_main_video)
     {
         _loginInfo.publish_main_video = publish_main_video;
-        m_pVideoViewLayout->muteVideo(UTF82Wide(_loginInfo._userId), TRTCVideoStreamTypeBig, _loginInfo.publish_main_video);
-        m_pMainViewBottomBar->muteLocalVideoBtn(_loginInfo.publish_main_video);
+        m_pVideoViewLayout->muteVideo(UTF82Wide(_loginInfo._userId), TRTCVideoStreamTypeBig, !_loginInfo.publish_main_video);
+        m_pMainViewBottomBar->muteLocalVideoBtn(!_loginInfo.publish_main_video);
         TRTCCloudCore::GetInstance()->stopPreview();
         TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalVideo(true);
         m_pVideoViewLayout->deleteVideoView(UTF82Wide(_loginInfo._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+
+        m_pUserListController->RemoveUser(_loginInfo._userId);
     }
     else
     {
+        _loginInfo.publish_main_video = publish_main_video;
+        m_pVideoViewLayout->muteVideo(UTF82Wide(_loginInfo._userId),TRTCVideoStreamTypeBig,!_loginInfo.publish_main_video);
+        m_pMainViewBottomBar->muteLocalVideoBtn(!_loginInfo.publish_main_video);
+        TRTCCloudCore::GetInstance()->startPreview();
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalVideo(false);
         m_pVideoViewLayout->dispatchVideoView(UTF82Wide(_loginInfo._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+        m_pUserListController->AddUser(_loginInfo._userId);
     }
 
     if (!publish_audio)
     {
         _loginInfo.publish_audio = publish_audio;
-        m_pVideoViewLayout->muteAudio(UTF82Wide(_loginInfo._userId), TRTCVideoStreamTypeBig, _loginInfo.publish_audio);
-        m_pMainViewBottomBar->muteLocalAudioBtn(_loginInfo.publish_audio);
+        m_pVideoViewLayout->muteAudio(UTF82Wide(_loginInfo._userId), TRTCVideoStreamTypeBig, !_loginInfo.publish_audio);
+        m_pMainViewBottomBar->muteLocalAudioBtn(!_loginInfo.publish_audio);
         TRTCCloudCore::GetInstance()->getTRTCCloud()->stopLocalAudio();
         TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalAudio(true);
     }
+    else
+    {
+        _loginInfo.publish_audio = publish_audio;
+        m_pVideoViewLayout->muteAudio(UTF82Wide(_loginInfo._userId),TRTCVideoStreamTypeBig,!_loginInfo.publish_audio);
+        m_pMainViewBottomBar->muteLocalAudioBtn(!_loginInfo.publish_audio);
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->startLocalAudio();
+        TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalAudio(false);
+    }
+    m_pUserListController->UpdateUserInfo(_loginInfo);
 }
 
 CPaintManagerUI & TRTCMainViewController::getPaintManagerUI()
@@ -447,6 +499,12 @@ LRESULT TRTCMainViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM l
     {
         if (wParam != ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP)
         {
+            if (CDataCenter::GetInstance()->m_emLivePlayerSourceType == TRTC_CDN)
+            {
+                TRTCCloudCore::GetInstance()->getTXLivePlayer()->setCallback(nullptr, nullptr);
+                TRTCCloudCore::GetInstance()->getTXLivePlayer()->stopPlay();
+            }
+            
             exitRoom();
             return false;
         }
@@ -459,6 +517,10 @@ LRESULT TRTCMainViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM l
     else if (uMsg == WM_NCACTIVATE)
     {
         if (!::IsIconic(*this)) return (wParam == 0) ? TRUE : FALSE;
+    }
+    else if (uMsg == WM_SIZE)
+    {
+        m_pVideoViewLayout->updateSize();
     }
     else if (uMsg == WM_USER_CMD_EnterRoom)
     {
@@ -491,6 +553,14 @@ LRESULT TRTCMainViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM l
         onError(errCode, *errMsg);
         delete errMsg;
         errMsg = nullptr;
+    }
+    else if (uMsg == WM_USER_CMD_Warning)
+    {
+        std::string * warningMsg = (std::string *)lParam;
+        int warningCode = wParam;
+        onError(warningCode, *warningMsg);
+        delete warningMsg;
+        warningMsg = nullptr;
     }
     else if (uMsg == WM_USER_CMD_Dashboard)
     {
@@ -545,23 +615,23 @@ LRESULT TRTCMainViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM l
             strFormat.Format(L"%s网络恢复，重进房成功", Log::_GetDateTimeString().c_str());
             TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
         }
-	}
-	else if (uMsg == WM_USER_CMD_SubVideoAvailable)
-	{
-		std::string * userId = (std::string *)wParam;
-		bool available = (bool)lParam;
-		onSubVideoAvailable(*userId, available);
-		delete userId;
-		userId = nullptr;
-	}
-	else if (uMsg == WM_USER_CMD_VideoAvailable)
-	{
-		std::string * userId = (std::string *)wParam;
-		bool available = (bool)lParam;
-		onVideoAvailable(*userId, available);
-		delete userId;
-		userId = nullptr;
-	}
+    }
+    else if (uMsg == WM_USER_CMD_SubVideoAvailable)
+    {
+        std::string * userId = (std::string *)wParam;
+        bool available = (bool)lParam;
+        onSubVideoAvailable(*userId, available);
+        delete userId;
+        userId = nullptr;
+    }
+    else if (uMsg == WM_USER_CMD_VideoAvailable)
+    {
+        std::string * userId = (std::string *)wParam;
+        bool available = (bool)lParam;
+        onVideoAvailable(*userId, available);
+        delete userId;
+        userId = nullptr;
+    }
     else if (uMsg == WM_USER_CMD_AuidoAvailable)
     {
         std::string * userId = (std::string *)wParam;
@@ -638,11 +708,11 @@ LRESULT TRTCMainViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM l
     }
     else if (uMsg == WM_USER_CMD_RoleChange)
     {
-        TRTCRoleType role = (TRTCRoleType)wParam;
-        if (role == TRTCRoleAudience)
-        {
-            onAnchorToAudience();
-        }
+        onUpdateRoleChange();
+    }
+    else if (uMsg == WM_USER_CMD_LiveTypeChange)
+    {
+        switchLivePlayerMode((LivePlayerSourceType)wParam);
     }
     else if(uMsg == WM_USER_CMD_OnStartPublishinge)
     {
@@ -679,6 +749,7 @@ void TRTCMainViewController::onEnterRoom(int result)
 {
     if (result >= 0)
     {
+        CDataCenter::GetInstance()->m_bIsEnteredRoom = true;
         bool bAudioSenceStyle = false;
         if(CDataCenter::GetInstance()->m_sceneParams ==  TRTCAppSceneAudioCall || CDataCenter::GetInstance()->m_sceneParams == TRTCAppSceneVoiceChatRoom)
             bAudioSenceStyle = true;
@@ -688,10 +759,18 @@ void TRTCMainViewController::onEnterRoom(int result)
         TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalAudio(false);
 
         LocalUserInfo& info = CDataCenter::GetInstance()->getLocalUserInfo();
+       
         CDuiString strFormat;
         strFormat.Format(L"%s进入[%d]房间成功,耗时:%dms", Log::_GetDateTimeString().c_str(), info._roomId, result);
         TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
         info._bEnterRoom = true;
+
+        if (!(bAudioSenceStyle == true || CDataCenter::GetInstance()->m_roleType == TRTCRoleAudience))
+        {
+            m_pVideoViewLayout->dispatchVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+
+            m_pUserListController->AddUser(info._userId);
+        }
 
         if(CDataCenter::GetInstance()->m_bCDNMixTranscoding)
             TRTCCloudCore::GetInstance()->startCloudMixStream();
@@ -707,6 +786,7 @@ void TRTCMainViewController::onEnterRoom(int result)
 
 void TRTCMainViewController::onExitRoom(int reason)
 {
+
     CDataCenter::GetInstance()->CleanRoomInfo();
     TRTCCloudCore::GetInstance()->Uninit();
     TRTCLoginViewController* pLogin = new TRTCLoginViewController();
@@ -715,6 +795,7 @@ void TRTCMainViewController::onExitRoom(int reason)
     pLogin->CenterWindow();
     pLogin->ShowWindow(true);
     Close(ID_CLOSE_WINDOW_NO_QUIT_MSGLOOP);
+    CDataCenter::GetInstance()->m_bIsEnteredRoom = false;
 }
 
 void TRTCMainViewController::onRemoteUserEnterRoom(std::string userId)
@@ -728,6 +809,9 @@ void TRTCMainViewController::onRemoteUserEnterRoom(std::string userId)
     strFormat.Format(L"%s[%s]加入房间)", Log::_GetDateTimeString().c_str(), UTF82Wide(userId).c_str());
     TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
 
+    m_pVideoViewLayout->dispatchVideoView(UTF82Wide(userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+
+    m_pUserListController->AddUser(userId);
 }
 
 void TRTCMainViewController::onRemoteUserLeaveRoom(std::string userId)
@@ -751,74 +835,82 @@ void TRTCMainViewController::onRemoteUserLeaveRoom(std::string userId)
     TXLiveAvVideoView::clearUserEventLogText(userId);
 
     CDataCenter::GetInstance()->removeRemoteUser(userId);
+
+    m_pUserListController->RemoveUser(userId);
 }
 
 void TRTCMainViewController::onSubVideoAvailable(std::string userId, bool available)
 {
-	if (available) {
+    if (available) {
         //避免用户流事件先于进房事件到。
         CDataCenter::GetInstance()->addRemoteUser(userId, false);
-        RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
-        if (remoteInfo.user_id != "")
+        RemoteUserInfo* remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
+        if (remoteInfo != nullptr && remoteInfo->user_id != "")
         {
-            remoteInfo.available_sub_video = true;
-            int bRet = m_pVideoViewLayout->dispatchVideoView(UTF82Wide(userId),TRTCVideoStreamTypeSub);
-            if(bRet == 0 && TRTCCloudCore::GetInstance()->getTRTCCloud()) {
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->startRemoteSubStreamView(userId.c_str(),NULL);
-                remoteInfo.subscribe_sub_vidoe = true;
-            }
-        }
-	}
-	else {
-		if (TRTCCloudCore::GetInstance()->getTRTCCloud())
-			TRTCCloudCore::GetInstance()->getTRTCCloud()->stopRemoteSubStreamView(userId.c_str());
-        m_pVideoViewLayout->deleteVideoView(UTF82Wide(userId), TRTCVideoStreamTypeSub);
+            remoteInfo->available_sub_video = true;
 
-        RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
-        if(remoteInfo.user_id != "")
-        {
-            remoteInfo.available_sub_video = false;
-            remoteInfo.subscribe_sub_vidoe = false;
+            int bRet = m_pVideoViewLayout->dispatchVideoView(UTF82Wide(userId), TRTCVideoStreamTypeSub);
+            if (bRet == 0) {
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->startRemoteSubStreamView(userId.c_str(), NULL);
+            }
+            remoteInfo->subscribe_sub_video = true;
+
+            TRTCCloudCore::GetInstance()->getTRTCCloud()->setRemoteVideoRenderCallback(userId.c_str(), TRTCVideoPixelFormat_BGRA32, \
+                TRTCVideoBufferType_Buffer, (ITRTCVideoRenderCallback*)getShareViewMgrInstance());
         }
-	}
-   
+    }
+    else {
+        if (TRTCCloudCore::GetInstance()->getTRTCCloud())
+            TRTCCloudCore::GetInstance()->getTRTCCloud()->stopRemoteSubStreamView(userId.c_str());
+        m_pVideoViewLayout->deleteVideoView(UTF82Wide(userId), TRTCVideoStreamTypeSub);
+        RemoteUserInfo* remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
+        if(remoteInfo != nullptr && remoteInfo->user_id != "")
+        {
+            remoteInfo->available_sub_video = false;
+            remoteInfo->subscribe_sub_video = false;
+        }
+    }
     if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
+    m_pVideoViewLayout->muteVideo(UTF82Wide(userId), TRTCVideoStreamTypeSub, !available);
 
     LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
     CDuiString strFormat;
     strFormat.Format(L"%s[%s]onSubVideoAvailable : %d", Log::_GetDateTimeString().c_str(), UTF82Wide(userId).c_str(), available);
-    TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
+    TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeSub, strFormat.GetData(), true);
 }
 
 void TRTCMainViewController::onVideoAvailable(std::string userId, bool available)
 {
+    RemoteUserInfo* remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
     if (available) {
         CDataCenter::GetInstance()->addRemoteUser(userId, false);
-        RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
-        if(remoteInfo.user_id != "")
+        if(remoteInfo != nullptr && remoteInfo->user_id != "")
         {
-            remoteInfo.available_main_video = false;
-            int bRet = m_pVideoViewLayout->dispatchVideoView(UTF82Wide(userId),TRTCVideoStreamTypeBig);
-            if(bRet == 0 && TRTCCloudCore::GetInstance()->getTRTCCloud()) {
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->startRemoteView(userId.c_str(),NULL);
-                remoteInfo.subscribe_main_video = true;
+            remoteInfo->available_main_video = true;
+            remoteInfo->subscribe_main_video = true;
+            if (m_pVideoViewLayout->IsRemoteViewShow(UTF82Wide(userId), TRTCVideoStreamTypeBig));
+            {
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->startRemoteView(userId.c_str(), NULL);
             }
+            TRTCCloudCore::GetInstance()->getTRTCCloud()->setRemoteVideoRenderCallback(userId.c_str(), TRTCVideoPixelFormat_BGRA32, \
+                TRTCVideoBufferType_Buffer, (ITRTCVideoRenderCallback*)getShareViewMgrInstance());
         }
     }
     else {
         if (TRTCCloudCore::GetInstance()->getTRTCCloud())
             TRTCCloudCore::GetInstance()->getTRTCCloud()->stopRemoteView(userId.c_str());
-        m_pVideoViewLayout->deleteVideoView(UTF82Wide(userId), TRTCVideoStreamTypeBig);
-        RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
-        if(remoteInfo.user_id != "")
+        //m_pVideoViewLayout->deleteVideoView(UTF82Wide(userId), TRTCVideoStreamTypeBig);
+        if(remoteInfo != nullptr && remoteInfo->user_id != "")
         {
-            remoteInfo.available_main_video = false;
-            remoteInfo.subscribe_main_video = false;
+            remoteInfo->available_main_video = false;
+            remoteInfo->subscribe_main_video = false;
         }
     }
 
-    if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
+    m_pUserListController->UpdateUserInfo(*remoteInfo);
 
+    if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
+    m_pVideoViewLayout->muteVideo(UTF82Wide(userId), TRTCVideoStreamTypeBig, !available);
     LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
     CDuiString strFormat;
     strFormat.Format(L"%s[%s]onVideoAvailable : %d", Log::_GetDateTimeString().c_str(), UTF82Wide(userId).c_str(), available);
@@ -832,12 +924,15 @@ void TRTCMainViewController::onAudioAvailable(std::string userId, bool available
     strFormat.Format(L"%s[%s]onAudioAvailable : %d", Log::_GetDateTimeString().c_str(), UTF82Wide(userId).c_str(), available);
     TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
 
-    RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
-    if(remoteInfo.user_id != "")
+    RemoteUserInfo* remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(userId);
+    if(remoteInfo != nullptr && remoteInfo->user_id != "")
     {
-        remoteInfo.available_audio = available;
-        remoteInfo.subscribe_audio = available;
+        remoteInfo->available_audio = available;
+        remoteInfo->subscribe_audio = available;
+        m_pVideoViewLayout->muteAudio(UTF82Wide(userId),TRTCVideoStreamTypeBig, !available);
     }
+
+    m_pUserListController->UpdateUserInfo(*remoteInfo);
 
     if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
 }
@@ -868,9 +963,19 @@ void TRTCMainViewController::onError(int errCode, std::string errMsg)
     }
     else
     {
-
         CDuiString strFormat;
         strFormat.Format(L"%sError[err:%d,msg:%s]", Log::_GetDateTimeString().c_str(), errCode, UTF82Wide(errMsg).c_str());
+        TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
+    }
+}
+
+void TRTCMainViewController::onWarning(int warningCode, std::string warningMsg)
+{
+    LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
+    if (warningCode == WARNING_SPEAKER_DEVICE_EMPTY || warningCode == WARNING_MICROPHONE_DEVICE_EMPTY || warningCode == WARNING_CAMERA_DEVICE_EMPTY)
+    {
+        CDuiString strFormat;
+        strFormat.Format(L"%sWarning[warning:%d,msg:%s]", Log::_GetDateTimeString().c_str(), warningCode, UTF82Wide(warningMsg).c_str());
         TXLiveAvVideoView::appendEventLogText(info._userId, TRTCVideoStreamTypeBig, strFormat.GetData(), true);
     }
 }
@@ -929,8 +1034,9 @@ void TRTCMainViewController::onViewBtnClickEvent(int id, std::wstring userId, in
         std::wstring localUserId = UTF82Wide(CDataCenter::GetInstance()->getLocalUserID());
         if (localUserId.compare(userId) == 0)
         {
+            bool publish_main_video = CDataCenter::GetInstance()->m_localInfo.publish_main_video;
             std::vector<TRTCCloudCore::MediaDeviceInfo> deviceInfo = TRTCCloudCore::GetInstance()->getCameraDevice();
-            if (deviceInfo.size() <= 0)
+            if (deviceInfo.size() <= 0 && !publish_main_video)
             {
                 CMsgWnd::ShowMessageBox(GetHWND(), _T("TRTCDuilibDemo"), _T("Error: 未检出到摄像头，请检查本地电脑设备。"), 0xFFF08080);
                 return;
@@ -946,11 +1052,19 @@ void TRTCMainViewController::onViewBtnClickEvent(int id, std::wstring userId, in
     }
     else if (id == UI_EVENT_MSG::UI_BTNMSG_ID_MuteAudio)
     {
+        if (CDataCenter::GetInstance()->m_roleType == TRTCRoleAudience)
+        {
+            CMsgWnd::ShowMessageBox(GetHWND(), _T("TRTCDuilibDemo"), _T("Error: 观众进房场景，无法打开音频，请退房重新选择模式"), 0xFFF08080);
+            return;
+        }
+
         std::wstring localUserId = UTF82Wide(CDataCenter::GetInstance()->getLocalUserID());
         if (localUserId.compare(userId) == 0)
         {
+
+            bool publish_audio = CDataCenter::GetInstance()->m_localInfo.publish_audio;
             std::vector<TRTCCloudCore::MediaDeviceInfo> deviceInfo = TRTCCloudCore::GetInstance()->getMicDevice();
-            if (deviceInfo.size() <= 0)
+            if (deviceInfo.size() <= 0 && !publish_audio)
             {
                 CMsgWnd::ShowMessageBox(GetHWND(), _T("TRTCDuilibDemo"), _T("Error: 未检出到麦克风，请检查本地电脑设备。"), 0xFFF08080);
                 return;
@@ -976,17 +1090,20 @@ void TRTCMainViewController::onLocalVideoPublishChange(std::wstring userId, int 
             m_pMainViewBottomBar->muteLocalVideoBtn(!_loginInfo.publish_main_video);
             TRTCCloudCore::GetInstance()->stopPreview();
             TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalVideo(true);
-            m_pVideoViewLayout->deleteVideoView(UTF82Wide(_loginInfo._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+           // m_pVideoViewLayout->deleteVideoView(UTF82Wide(_loginInfo._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
         }
         else
         {
             _loginInfo.publish_main_video = !_loginInfo.publish_main_video;
             m_pVideoViewLayout->muteVideo(userId, (TRTCVideoStreamType)streamType, !_loginInfo.publish_main_video);
             m_pMainViewBottomBar->muteLocalVideoBtn(!_loginInfo.publish_main_video);
+            m_pVideoViewLayout->dispatchVideoView(UTF82Wide(_loginInfo._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+
+            m_pUserListController->AddUser(Wide2UTF8(userId));
             TRTCCloudCore::GetInstance()->startPreview();
             TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalVideo(false);
-            m_pVideoViewLayout->dispatchVideoView(UTF82Wide(_loginInfo._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
         }
+        m_pUserListController->UpdateUserInfo(_loginInfo);
     }
     else if (streamType == TRTCVideoStreamTypeSub)
     {
@@ -1017,77 +1134,106 @@ void TRTCMainViewController::onLocalAudioPublishChange(std::wstring userId, int 
             TRTCCloudCore::GetInstance()->getTRTCCloud()->startLocalAudio();
             TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalAudio(false);
         }
+        m_pUserListController->UpdateUserInfo(_loginInfo);
     }
 }
 
 void TRTCMainViewController::onRemoteVideoSubscribeChange(std::wstring userId, int streamType)
 {
-    RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(Wide2UTF8(userId));
-    if (remoteInfo.user_id != "")
+    RemoteUserInfo* remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(Wide2UTF8(userId));
+    if (remoteInfo != nullptr && remoteInfo->user_id != "")
     {
         if(streamType == TRTCVideoStreamTypeBig)
         {
-            remoteInfo.subscribe_main_video = !remoteInfo.subscribe_main_video;
-            m_pVideoViewLayout->muteVideo(userId,(TRTCVideoStreamType)streamType,!remoteInfo.subscribe_main_video);
-            TRTCCloudCore::GetInstance()->getTRTCCloud()->muteRemoteVideoStream(Wide2UTF8(userId).c_str(),!remoteInfo.subscribe_main_video);
+            remoteInfo->subscribe_main_video = !remoteInfo->subscribe_main_video;
+            if (remoteInfo->available_main_video)
+            {
+                m_pVideoViewLayout->muteVideo(userId, (TRTCVideoStreamType)streamType, !remoteInfo->subscribe_main_video);
+            }
+            TRTCCloudCore::GetInstance()->getTRTCCloud()->muteRemoteVideoStream(Wide2UTF8(userId).c_str(),!remoteInfo->subscribe_main_video);
         } 
         else if(streamType == TRTCVideoStreamTypeSub)
         {
-            remoteInfo.subscribe_sub_vidoe = !remoteInfo.subscribe_sub_vidoe;
-            m_pVideoViewLayout->muteVideo(userId,(TRTCVideoStreamType)streamType,!remoteInfo.subscribe_sub_vidoe);
-            if(remoteInfo.subscribe_sub_vidoe)
+            remoteInfo->subscribe_sub_video = !remoteInfo->subscribe_sub_video;
+            if (remoteInfo->available_sub_video)
+            {
+                m_pVideoViewLayout->muteVideo(userId, (TRTCVideoStreamType)streamType, !remoteInfo->subscribe_sub_video);
+            }
+            if(remoteInfo->subscribe_sub_video)
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->startRemoteSubStreamView(Wide2UTF8(userId).c_str(),nullptr);
             else
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->stopRemoteSubStreamView(Wide2UTF8(userId).c_str());
         }
         if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
+
+        m_pUserListController->UpdateUserInfo(*remoteInfo);
     }
 }
 
 void TRTCMainViewController::onRemoteAudioSubscribeChange(std::wstring userId, int streamType)
 {
-    RemoteUserInfo& remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(Wide2UTF8(userId));
-    if(remoteInfo.user_id != "")
+    RemoteUserInfo* remoteInfo = CDataCenter::GetInstance()->FindRemoteUser(Wide2UTF8(userId));
+    if(remoteInfo != nullptr && remoteInfo->user_id != "")
     {
         if(streamType == TRTCVideoStreamTypeBig)
         {
-            remoteInfo.subscribe_audio = !remoteInfo.subscribe_audio;
-            m_pVideoViewLayout->muteAudio(userId,(TRTCVideoStreamType)streamType,!remoteInfo.subscribe_audio);
-            TRTCCloudCore::GetInstance()->getTRTCCloud()->muteRemoteAudio(Wide2UTF8(userId).c_str(),!remoteInfo.subscribe_audio);
+            remoteInfo->subscribe_audio = !remoteInfo->subscribe_audio;
+            if (remoteInfo->available_audio)
+            {
+                m_pVideoViewLayout->muteAudio(userId, (TRTCVideoStreamType)streamType, !remoteInfo->subscribe_audio);
+            }
+            TRTCCloudCore::GetInstance()->getTRTCCloud()->muteRemoteAudio(Wide2UTF8(userId).c_str(),!remoteInfo->subscribe_audio);
             if (CDataCenter::GetInstance()->m_mixTemplateID <= TRTCTranscodingConfigMode_Manual) TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
+
+            m_pUserListController->UpdateUserInfo(*remoteInfo);
         }
     }
 }
 
+void TRTCMainViewController::InternalEnterRoom()
+{
+    //进入房间
+    LocalUserInfo& info = CDataCenter::GetInstance()->getLocalUserInfo();
+    TRTCParams params;
+    params.sdkAppId = GenerateTestUserSig::SDKAPPID;
+    params.roomId = info._roomId;//std::to_string(info._roomId).c_str();
+    std::string userid = info._userId.c_str();
+    params.userId = (char*)userid.c_str();
+    std::string userSig = info._userSig.c_str();
+    params.userSig = (char*)userSig.c_str();
+    std::string privMapEncrypt = "";
+    params.privateMapKey = (char*)privMapEncrypt.c_str();
+    params.role = CDataCenter::GetInstance()->m_roleType;
+
+    // 默认旁路streamId = sdkappid_roomid_userid_main
+    if (CDataCenter::GetInstance()->m_strCustomStreamId.empty())
+        CDataCenter::GetInstance()->m_strCustomStreamId = format("%d_%d_%s_main", GenerateTestUserSig::SDKAPPID, info._roomId, info._userId.c_str());
+    params.streamId = CDataCenter::GetInstance()->m_strCustomStreamId.c_str();
+
+
+    TRTCCloudCore::GetInstance()->getTRTCCloud()->enterRoom(params, CDataCenter::GetInstance()->m_sceneParams);
+
+    
+}
+
+
+
 void TRTCMainViewController::exitRoom()
 {
     LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
-    bool bExit = false;
-    if (info._bEnterRoom == false)
+
+    m_pVideoViewLayout->deleteVideoView(UTF82Wide(info._userId),TRTCVideoStreamType::TRTCVideoStreamTypeBig);
+    TRTCCloudCore::GetInstance()->PreUninit();
+    m_pMainViewBottomBar->UnInitBottomUI();
+    m_pVideoViewLayout->unInitRenderUI();
+    m_pUserListController->UnInitUserListUI();
+    TXLiveAvVideoView::clearAllLogText();
+    ShowWindow(false);
+    TRTCCloudCore::GetInstance()->getTRTCCloud()->exitRoom();
+
+    if (info._bEnterRoom == false || CDataCenter::GetInstance()->m_emLivePlayerSourceType == TRTC_CDN)
     {
-        LINFO(L"exitRoom info._bEnterRoom = false");
-        bExit = true;
-    }
-    else
-    {
-        if (MSGID_OK == CMsgWnd::MessageBox(m_hWnd, _T("TRTCDuilibDemo"), _T("您确定要退出房间吗？")))
-        {
-            bExit = true;
-            LINFO(L"exitRoom info._bEnterRoom = true");
-        }
-    }
-    if (bExit)
-    {
-        m_pVideoViewLayout->deleteVideoView(UTF82Wide(info._userId), TRTCVideoStreamType::TRTCVideoStreamTypeBig);
-        TRTCCloudCore::GetInstance()->PreUninit();
-        m_pMainViewBottomBar->UnInitBottomUI();
-        m_pVideoViewLayout->unInitRenderUI();
-        TXLiveAvVideoView::clearAllLogText();
-        ShowWindow(false);
-        TRTCCloudCore::GetInstance()->getTRTCCloud()->exitRoom();
-    }
-    if (info._bEnterRoom == false)
-    {
+        CDataCenter::GetInstance()->m_emLivePlayerSourceType = TRTC_RTC;
         onExitRoom(0);
     }
 }
@@ -1097,8 +1243,13 @@ void TRTCMainViewController::onFirstVideoFrame(TRTCVideoStreamType streamType, s
 
 }
 
-void TRTCMainViewController::onAnchorToAudience()
+void TRTCMainViewController::onUpdateRoleChange()
 {
     CheckLocalUiStatus();
-    TRTCCloudCore::GetInstance()->stopScreen();
+    if (CDataCenter::GetInstance()->m_roleType == TRTCRoleAudience && CDataCenter::GetInstance()->m_localInfo.publish_sub_video)
+    {
+        TRTCScreenCaptureSourceInfo info{ };
+        info.type = TRTCScreenCaptureSourceTypeUnknown;
+        m_pMainViewBottomBar->OpenScreenBtnEvent(info);
+    }
 }

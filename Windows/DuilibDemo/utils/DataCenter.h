@@ -7,6 +7,12 @@
 
 class CConfigMgr;
 
+#define TRTCAudioQualityUnSelect 0
+enum LivePlayerSourceType
+{
+    TRTC_RTC,
+    TRTC_CDN
+};
 
 typedef struct RemoteUserInfo
 {
@@ -18,7 +24,7 @@ typedef struct RemoteUserInfo
     bool available_audio = false;
     bool subscribe_audio = false;
     bool subscribe_main_video = false;
-    bool subscribe_sub_vidoe = false;
+    bool subscribe_sub_video = false;
 }RemoteUserInfo;
 
 typedef struct _tagLocalUserInfo {
@@ -85,6 +91,8 @@ public:
     LocalUserInfo& getLocalUserInfo();
     std::string getLocalUserID() { return m_localInfo._userId; };
     VideoResBitrateTable getVideoConfigInfo(int resolution);
+    bool getAudioAvaliable(std::string userId);
+    bool getVideoAvaliable(std::string userId, TRTCVideoStreamType type);
 public:
     void WriteEngineConfig();
     BeautyConfig& GetBeautyConfig();
@@ -117,6 +125,9 @@ public: //trtc
     bool m_bAutoRecvAudio = true;
     bool m_bAutoRecvVideo = true;
 
+    bool m_bMuteLocalVideo = false;
+    bool m_bMuteLocalAudio = false;
+
     bool m_bLocalVideoMirror = false;      //本地镜像
     bool m_bRemoteVideoMirror = false;     //暂不支持
     bool m_bShowAudioVolume =   true;      //开启音量提示
@@ -133,6 +144,7 @@ public: //trtc
 
     bool m_bOpenAudioAndCanvasMix = false; //开启纯音频+画布混流模式。
     bool m_bCDNMixTranscoding = false;     //混流设置
+    bool m_bPublishScreenInBigStream = false;
     int m_mixTemplateID = 0;
     std::string m_strMixStreamId;
     std::string m_strCustomStreamId;
@@ -142,7 +154,8 @@ public: //trtc
     uint32_t m_speakerVolume = 100;
     uint32_t m_audioCaptureVolume = 100; // 软件采集音量
     uint32_t m_audioPlayoutVolume = 100; // 软件播放音量（人声）
-
+    //是否在room中
+    bool m_bIsEnteredRoom = false;
 
     //录制参数
     bool m_bStartLocalRecord = false;
@@ -152,12 +165,23 @@ public: //trtc
     std::wstring m_recordCaptureSourceInfoName;
     RECT m_recordCaptureRect = {0};
     std::wstring m_wstrRecordFile;
+
+    //录音参数
+    bool m_bStartAudioRecording = false;
+    std::wstring m_wstrAudioRecordFile;
+
+
+    bool m_bStartSystemVoice = false;
+
+    int audio_quality_ = TRTCAudioQualityUnSelect;
+    LivePlayerSourceType m_emLivePlayerSourceType = TRTC_RTC;
 public: 
     //远端用户信息
     RemoteUserInfoList m_remoteUser;
     void addRemoteUser(std::string userId, bool bClear = true);
     void removeRemoteUser(std::string userId);
-    RemoteUserInfo &FindRemoteUser(std::string userId);
+    RemoteUserInfo* FindRemoteUser(std::string userId);
+    std::string GetCdnUrl(const std::string & strUserId);
 public:
     CConfigMgr* m_pConfigMgr;
 

@@ -2,35 +2,34 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0D0D0D"
+    android:background="@drawable/app_content_bg"
     android:orientation="vertical">
 
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="20dp">
+
+    <TextView
+        android:id="@+id/main_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
         android:layout_marginTop="20dp"
-        android:layout_marginBottom="10dp">
+        android:gravity="center"
+        android:text="腾讯视频云"
+        android:textColor="#ffffff"
+        android:textSize="26dp" />
 
-        <TextView
-            android:id="@+id/main_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_centerHorizontal="true"
-            android:text="腾讯云 TRTC"
-            android:textColor="#ffffff"
-            android:textSize="26sp" />
-
-        <ImageView
-            android:id="@+id/img_logout"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentRight="true"
-            android:layout_centerVertical="true"
-            android:layout_marginRight="10dp"
-            android:src="@drawable/ic_logout" />
+    <ImageView
+        android:id="@+id/img_logout"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_centerVertical="true"
+        android:layout_marginLeft="15dp"
+        android:visibility="gone"
+        android:src="@drawable/ic_head" />
     </RelativeLayout>
-
 
     <android.support.v7.widget.RecyclerView
         android:id="@+id/main_recycler_view"
@@ -53,19 +52,9 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="10dp"
-        android:gravity="center"
-        android:text="本APP用于展示腾讯视频云实时音视频服务的各类功能"
-        android:textColor="#666666"
-        android:textSize="12sp" />
-
-    <TextView
-        android:id="@+id/tv_privacy"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
         android:layout_marginBottom="20dp"
         android:gravity="center"
-        android:text="@string/main_privacy_text"
+        android:text="本APP用于展示腾讯视频云终端产品的各类功能"
         android:textColor="#666666"
-        android:textSize="13sp" />
+        android:textSize="12sp" />
 </LinearLayout>

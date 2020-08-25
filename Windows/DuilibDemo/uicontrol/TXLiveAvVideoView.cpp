@@ -17,6 +17,7 @@
 #include "libyuv.h"
 #include <time.h>
 #include "util/log.h"
+#include "Live/TXLiveEventDef.h"
 //#include "common/Base.h"
 
 static CCriticalSection g_viewMgrCS;
@@ -25,42 +26,39 @@ using namespace Gdiplus;
 //////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////CTXLiveAvVideoViewMgr
+
 class CTXLiveAvVideoViewMgr
     : public ITRTCVideoRenderCallback
 {
-protected:
+public:
     CTXLiveAvVideoViewMgr()
     {
         GdiplusStartupInput gdiplusStartupInput;
         Status status = GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, NULL);
     };
-public:
+
     ~CTXLiveAvVideoViewMgr()
     {
         RemoveAllView();
         ::GdiplusShutdown(m_gdiplusToken);
     }
-    static CTXLiveAvVideoViewMgr& instance()
-    {
-        static CTXLiveAvVideoViewMgr uniqueInstance;
-        return uniqueInstance;
-    }
+public:
     void AddView(const std::string& userId, const TRTCVideoStreamType type, TXLiveAvVideoView* view)
     {
         CCSGuard guard(g_viewMgrCS);
         bool bFind = false;
         for (auto& itr : m_mapViews)
         {
-			if (itr.first == std::make_pair(userId, type) && itr.second == view)
+            if (itr.first == std::make_pair(userId, type) && itr.second == view)
             {
                 bFind = true;
                 break;
             }
         }
-		if (!bFind) {
-			std::pair<std::string, TRTCVideoStreamType> key = { userId, type };
-			m_mapViews.insert({key, view});
-		}
+        if (!bFind) {
+            std::pair<std::string, TRTCVideoStreamType> key = { userId, type };
+            m_mapViews.insert({key, view});
+        }
             
     }
 
@@ -135,6 +133,37 @@ private:
     std::multimap<std::pair<std::string, TRTCVideoStreamType>, TXLiveAvVideoView*> m_mapViews;    // userId和VideoView*的映射map
 };
 
+CTXLiveAvVideoViewMgr* getShareViewMgrInstance()
+{
+    static CTXLiveAvVideoViewMgr uniqueInstance;
+    return &uniqueInstance;
+}
+
+class CDNLivePlayerViewMgr :public ITXLivePlayerCallback
+{
+    virtual void onEventCallback(int eventId, const int paramCount, const char **paramKeys, const char **paramValues, void *pUserData)
+    {
+        
+    }
+    virtual void onVideoDecodeCallback(char* data, unsigned int length, int width, int height, TXEOutputVideoFormat format, void *pUserData)
+    {
+        TXLiveAvVideoView* viewPtr = (TXLiveAvVideoView*)pUserData;
+
+       viewPtr->AppendVideoFrame((unsigned char *)data, length, width, height, TRTCVideoPixelFormat_I420, LiteAVVideoRotation0);
+
+
+    }
+    virtual void onAudioDecodeCallback(unsigned char * pcm, unsigned int length, unsigned int sampleRate, unsigned int channel, unsigned long long timestamp, void *pUserData)
+    {
+        LINFO(L"onEventCallback");
+    }
+};
+
+CDNLivePlayerViewMgr* getCDNLivePlayerViewMgr()
+{
+    static CDNLivePlayerViewMgr uniqueInstance;
+    return &uniqueInstance;
+}
 //////////////////////////////////////////////////////////////////////////TXLiveAvVideoView
 std::multimap<std::pair<std::string, TRTCVideoStreamType>, std::vector<std::wstring>> TXLiveAvVideoView::g_mapEventLogText;
 std::multimap<std::pair<std::string, TRTCVideoStreamType>, std::wstring> TXLiveAvVideoView::g_mapDashboardLogText;
@@ -151,7 +180,7 @@ TXLiveAvVideoView::TXLiveAvVideoView()
 
 TXLiveAvVideoView::~TXLiveAvVideoView()
 {
-    CTXLiveAvVideoViewMgr::instance().RemoveView(m_userId, m_type, this);
+    getShareViewMgrInstance()->RemoveView(m_userId, m_type, this);
     if (m_pManager) {
         m_pManager->RemoveMessageFilter(this);
         m_bRegMsgFilter = false;
@@ -170,7 +199,7 @@ TXLiveAvVideoView::~TXLiveAvVideoView()
     */
 }
 
-bool TXLiveAvVideoView::RegEngine(const std::string & userId, TRTCVideoStreamType type, ITRTCCloud * engine, bool bLocal)
+bool TXLiveAvVideoView::SetRenderInfo(const std::string & userId, TRTCVideoStreamType type,  bool bLocal)
 {
     if (m_bOccupy)
         return false;
@@ -182,8 +211,10 @@ bool TXLiveAvVideoView::RegEngine(const std::string & userId, TRTCVideoStreamTyp
         m_bRegMsgFilter = true;
     }
     m_userId = userId;
-	m_type = type;
-    uint32_t ref = CTXLiveAvVideoViewMgr::instance().GetRef();
+    m_type = type;
+    uint32_t ref = getShareViewMgrInstance()->GetRef();
+
+    /*
     if (engine)
     {
 
@@ -197,10 +228,11 @@ bool TXLiveAvVideoView::RegEngine(const std::string & userId, TRTCVideoStreamTyp
             engine->setRemoteVideoRenderCallback(userId.c_str(), TRTCVideoPixelFormat_BGRA32, TRTCVideoBufferType_Buffer, &CTXLiveAvVideoViewMgr::instance());
         }
     }
+    */
     if (m_bLocalView)
-        CTXLiveAvVideoViewMgr::instance().AddView("", type, this);
+        getShareViewMgrInstance()->AddView("", type, this);
     else
-        CTXLiveAvVideoViewMgr::instance().AddView(userId, type, this);
+        getShareViewMgrInstance()->AddView(userId, type, this);
 
     m_hWnd = m_pManager->GetPaintWindow();
     {
@@ -216,13 +248,15 @@ bool TXLiveAvVideoView::RegEngine(const std::string & userId, TRTCVideoStreamTyp
     return true;
 }
 
-void TXLiveAvVideoView::RemoveEngine(ITRTCCloud * engine)
+void TXLiveAvVideoView::RemoveRenderInfo()
 {
     if (m_bLocalView)
-        CTXLiveAvVideoViewMgr::instance().RemoveView("", m_type, this);
+        getShareViewMgrInstance()->RemoveView("", m_type, this);
     else
-        CTXLiveAvVideoViewMgr::instance().RemoveView(m_userId, m_type, this);
-    uint32_t ref = CTXLiveAvVideoViewMgr::instance().GetRef();
+        getShareViewMgrInstance()->RemoveView(m_userId, m_type, this);
+    uint32_t ref = getShareViewMgrInstance()->GetRef();
+
+    /*
     if (engine)
     {
         if (ref == 0)
@@ -235,6 +269,7 @@ void TXLiveAvVideoView::RemoveEngine(ITRTCCloud * engine)
             //engine->setRemoteVideoRenderCallback(m_userId.c_str(), TRTCVideoPixelFormat_Unknown, TRTCVideoBufferType_Unknown, nullptr);
         }
     }
+    */
     {
         m_hWnd = nullptr;
         {
@@ -297,7 +332,7 @@ void TXLiveAvVideoView::SetPause(bool bPause)
 
 void TXLiveAvVideoView::RemoveAllRegEngine()
 {
-    CTXLiveAvVideoViewMgr::instance().RemoveAllView();
+    getShareViewMgrInstance()->RemoveAllView();
     //g_nTimerCnt = 1;
 }
 
@@ -310,6 +345,11 @@ void TXLiveAvVideoView::GetVideoResolution(int & width, int & height)
 UINT TXLiveAvVideoView::GetPaintMsgID()
 {
     return m_nDefineMsg;
+}
+
+std::string TXLiveAvVideoView::getUserId()
+{
+    return m_userId;
 }
 
 void TXLiveAvVideoView::switchViewDashboardStyle(ViewDashboardStyleEnum style)
@@ -410,26 +450,21 @@ LRESULT TXLiveAvVideoView::MessageHandler(UINT uMsg, WPARAM wParam, LPARAM lPara
 bool TXLiveAvVideoView::DoPaint(HDC hDC, const RECT & rcPaint, CControlUI * pStopControl)
 {
     nCntPaint++;
-    if (m_bPause)
-    {
+    if (m_bPause) {
         CControlUI::DoPaint(hDC, rcPaint, pStopControl);
         DoPaintText(hDC, m_rcItem, m_rcItem, false);
         return true;
     }
 
     bool bNeedDrawFrame = true;
-    int width = 0, height = 0;
     {
-        width = m_argbSrcFrame.width;
-        height = m_argbSrcFrame.height;
-        if (m_argbSrcFrame.frameBuf == nullptr)
-        {
+        CCSGuard guard(m_viewCs);
+        if (m_argbSrcFrame.frameBuf == nullptr) {
             bNeedDrawFrame = false;
         }
     }
 
-    if (bNeedDrawFrame == false)
-    {
+    if (bNeedDrawFrame == false) {
         CControlUI::DoPaint(hDC, rcPaint, pStopControl);
         DoPaintText(hDC, m_rcItem, m_rcItem, false);
         return true;
@@ -437,42 +472,39 @@ bool TXLiveAvVideoView::DoPaint(HDC hDC, const RECT & rcPaint, CControlUI * pSto
 
     //超过过一定时间没渲染数据了
     DWORD curTicket = ::GetTickCount();
-    if (dwLastAppendFrameTicket > 0 && curTicket - dwLastAppendFrameTicket > 3000)
-    {
+    if (dwLastAppendFrameTicket > 0 && curTicket - dwLastAppendFrameTicket > 3000) {
         CControlUI::DoPaint(hDC, rcPaint, pStopControl);
         DoPaintText(hDC, m_rcItem, m_rcItem, false);
         return true;
     }
-   
+
     clock_t begin_t = clock();
 
     //处理选择
     int w_rotation = 0, h_rotation = 0;
     {
         CCSGuard guard(m_viewCs);
-        if (m_argbSrcFrame.frameBuf == nullptr)
-            return true;
+        if (m_argbSrcFrame.frameBuf == nullptr) return true;
 
-        resetBuffer(width, height, m_argbRotationFrame.width, m_argbRotationFrame.height, &m_argbRotationFrame.frameBuf);
+        resetBuffer(m_argbSrcFrame.width, m_argbSrcFrame.height, m_argbRotationFrame.width,
+                    m_argbRotationFrame.height, &m_argbRotationFrame.frameBuf);
         libyuv::RotationMode mode = (libyuv::RotationMode)getRotationAngle(m_argbSrcFrame.rotation);
         w_rotation = m_argbRotationFrame.width;
         h_rotation = m_argbRotationFrame.height;
-        if (mode == libyuv::kRotate90 || mode == libyuv::kRotate270)
-        {
+        if (mode == libyuv::kRotate90 || mode == libyuv::kRotate270) {
             int temp = w_rotation;
             w_rotation = h_rotation;
             h_rotation = temp;
 
-            //ARGBRotate 做了XMirror，如果是90/270度旋转，需要调整
+            // ARGBRotate 做了XMirror，如果是90/270度旋转，需要调整
             mode = (libyuv::RotationMode)((mode + 180) % 360);
         }
-        int src_stride_argb = width * 4;
+        int src_stride_argb = m_argbSrcFrame.width * 4;
         int dst_stride_argb = w_rotation * 4;
 
-        libyuv::ARGBRotate(m_argbSrcFrame.frameBuf, src_stride_argb,
-            m_argbRotationFrame.frameBuf, dst_stride_argb, width, -height, mode);
+        libyuv::ARGBRotate(m_argbSrcFrame.frameBuf, src_stride_argb, m_argbRotationFrame.frameBuf,
+                           dst_stride_argb, m_argbSrcFrame.width, -m_argbSrcFrame.height, mode);
     }
-
     RECT rcImage = { 0 };
     if (EVideoRenderModeFill == m_renderMode)
     {
@@ -792,15 +824,15 @@ bool TXLiveAvVideoView::DoPaintText(HDC hDC, const RECT& rcText, const RECT& rcL
         }
         else
         {
-            int fontSize = GetNameFontSize(rcText);
-            Gdiplus::FontFamily fontFamily(L"微软雅黑");
-            Gdiplus::Font font(&fontFamily, fontSize, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-            StringFormat stringformat;
-            stringformat.SetAlignment(Gdiplus::StringAlignmentNear);
-            stringformat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-            Gdiplus::SolidBrush brush(Color(255, 255, 255, 255));
-            std::wstring text = UTF82Wide(m_userId);
-            guard.DrawString(text.c_str(), -1, &font, Gdiplus::RectF(rcText.left + 5, rcText.top + 10, rcText.right - rcText.left, 20), &stringformat, &brush);
+            //int fontSize = GetNameFontSize(rcText);
+            //Gdiplus::FontFamily fontFamily(L"微软雅黑");
+            //Gdiplus::Font font(&fontFamily, fontSize, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+            //StringFormat stringformat;
+            //stringformat.SetAlignment(Gdiplus::StringAlignmentNear);
+            //stringformat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            //Gdiplus::SolidBrush brush(Color(255, 255, 255, 255));
+            //std::wstring text = UTF82Wide(m_userId);
+            //guard.DrawString(text.c_str(), -1, &font, Gdiplus::RectF(rcText.left + 5, rcText.top + 10, rcText.right - rcText.left, 20), &stringformat, &brush);
         }
     }
 
@@ -819,16 +851,13 @@ bool TXLiveAvVideoView::DoPaintText(HDC hDC, const RECT& rcText, const RECT& rcL
     if (dashboardText.compare(L"") != 0 && g_nStyleDashboard > EViewDashboardNoVisible)
     {
         int fontSize = GetLogFontSize(rcLog);
-        int rcWidth = 300;
-        if (fontSize > 10)
-            rcWidth = 500;
         Gdiplus::FontFamily fontFamily(L"微软雅黑");
         Gdiplus::Font font(&fontFamily, fontSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         StringFormat stringformat;
         stringformat.SetAlignment(Gdiplus::StringAlignmentNear);
         stringformat.SetLineAlignment(Gdiplus::StringAlignmentNear);
         Gdiplus::SolidBrush brush(Color(255, 235, 10, 60));
-        guard.DrawString(dashboardText.c_str(), -1, &font, Gdiplus::RectF(rcLog.left + 5, rcLog.top + 5, rcWidth, rcLog.bottom - rcLog.top), &stringformat, &brush);
+        guard.DrawString(dashboardText.c_str(), -1, &font, Gdiplus::RectF(rcLog.left + 5, rcLog.top + 5, rcLog.right - rcLog.left, rcLog.bottom - rcLog.top), &stringformat, &brush);
     }
 
     std::wstring eventText = L"";
@@ -977,4 +1006,3 @@ int TXLiveAvVideoView::getRotationAngle(TRTCVideoRotation rotatio)
         return 0;
     }
 }
-

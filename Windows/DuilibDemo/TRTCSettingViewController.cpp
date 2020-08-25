@@ -27,7 +27,8 @@
 #include "UiShareSelect.h"
 
 #define AUDIO_DEVICE_VOLUME_TICKET 100
-
+#define AUDIO_VOLUME_TICKET 100
+#define BGM_PROGRESS_TICHET 100
 int TRTCSettingViewController::m_ref = 0;
 std::vector<TRTCSettingViewControllerNotify*> TRTCSettingViewController::vecNotifyList;
 
@@ -38,6 +39,7 @@ TRTCSettingViewController::TRTCSettingViewController(SettingTagEnum tagType, HWN
     TRTCSettingViewController::addRef();
 
     TRTCCloudCore::GetInstance()->getTRTCCloud()->addCallback(this);
+    TRTCCloudCore::GetInstance()->getTRTCCloud()->setLocalVideoRenderCallback(TRTCVideoPixelFormat_BGRA32, TRTCVideoBufferType_Buffer, (ITRTCVideoRenderCallback*)getShareViewMgrInstance());
 
     m_audioEffectParam1 = new TRTCAudioEffectParam(0, NULL);
     m_audioEffectParam2 = new TRTCAudioEffectParam(0, NULL);
@@ -48,6 +50,8 @@ TRTCSettingViewController::TRTCSettingViewController(SettingTagEnum tagType, HWN
     m_audioEffectParam3->publish = false;
 
     CDataCenter::GetInstance()->m_speakerVolume = TRTCCloudCore::GetInstance()->getTRTCCloud()->getCurrentSpeakerVolume();
+
+    is_init_windows_finished = false;
 }
 
 TRTCSettingViewController::~TRTCSettingViewController()
@@ -69,7 +73,7 @@ TRTCSettingViewController::~TRTCSettingViewController()
 void TRTCSettingViewController::preUnInit()
 {
     //退出所有功能测试
-    m_pVideoView->RemoveEngine(TRTCCloudCore::GetInstance()->getTRTCCloud());
+    m_pVideoView->RemoveRenderInfo();
     stopAllTestSetting();
 
     TRTCCloudCore::GetInstance()->getTRTCCloud()->removeCallback(this);
@@ -125,8 +129,10 @@ int TRTCSettingViewController::getRef()
 void TRTCSettingViewController::Notify(TNotifyUI & msg)
 {
     NotifyOtherTab(msg);
-    NotifyAudioEffectTab(msg);
+    NotifyAudioTab(msg);
     NotifyMixTab(msg);
+    NotifyRecordTab(msg);
+    NotifyAudioRecord(msg);
     CDuiString name = msg.pSender->GetName();
     if (msg.sType == _T("selectchanged"))  
     {
@@ -134,10 +140,9 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
         if (name.CompareNoCase(_T("normal_tab")) == 0) pTabSwitch->SelectItem(0);
         if (name.CompareNoCase(_T("video_tab")) == 0) pTabSwitch->SelectItem(1);
         if (name.CompareNoCase(_T("audio_tab")) == 0) pTabSwitch->SelectItem(2);
-        if (name.CompareNoCase(_T("audio_effect_tab")) == 0) pTabSwitch->SelectItem(3);
-        if (name.CompareNoCase(_T("other_tab")) == 0) pTabSwitch->SelectItem(4);
-        if (name.CompareNoCase(_T("mix_tab")) == 0) pTabSwitch->SelectItem(5);
-        if (name.CompareNoCase(_T("record_tab")) == 0) pTabSwitch->SelectItem(6);
+        if (name.CompareNoCase(_T("other_tab")) == 0) pTabSwitch->SelectItem(3);
+        if (name.CompareNoCase(_T("mix_tab")) == 0) pTabSwitch->SelectItem(4);
+        if (name.CompareNoCase(_T("record_tab")) == 0) pTabSwitch->SelectItem(5);
         if (name.CompareNoCase(_T("qos_smooth")) == 0) {  
             CDataCenter::GetInstance()->m_qosParams.preference = TRTCVideoQosPreferenceSmooth;
 
@@ -170,23 +175,13 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
             }
         }
         if (name.CompareNoCase(_T("scene_live")) == 0) {
-            CGroupBoxUI* normalContainer = static_cast<CGroupBoxUI*>(m_pmUI.FindControl(_T("normal_groupbox")));
-            if (normalContainer)
-                normalContainer->SetFixedHeight(344);
-            CHorizontalLayoutUI* roleContainer = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("choose_role")));
-            if (roleContainer)
-                roleContainer->SetVisible(true);
             CDataCenter::GetInstance()->m_sceneParams = TRTCAppSceneLIVE;
             //直播场景和视频通话场景默认码率值不一样。
             updateVideoBitrateUi();
+            updateRoleUi();
+            UpdateAudioQualityUi();
         }
         if (name.CompareNoCase(_T("scene_call")) == 0) {
-            CGroupBoxUI* normalContainer = static_cast<CGroupBoxUI*>(m_pmUI.FindControl(_T("normal_groupbox")));
-            if (normalContainer)
-                normalContainer->SetFixedHeight(304);
-            CHorizontalLayoutUI* roleContainer = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("choose_role")));
-            if (roleContainer)
-                roleContainer->SetVisible(false);
             CDataCenter::GetInstance()->m_sceneParams = TRTCAppSceneVideoCall;
             CDataCenter::GetInstance()->m_roleType = TRTCRoleAnchor;
             if (CDataCenter::GetInstance()->m_localInfo._bEnterRoom)
@@ -195,25 +190,21 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
             }
             //直播场景和视频通话场景默认码率值不一样。
             updateVideoBitrateUi();
+            updateRoleUi();
+            UpdateAudioQualityUi();
+            LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+            if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+            {
+                ::PostMessage(m_parentHwnd, WM_USER_CMD_RoleChange, (WPARAM)CDataCenter::GetInstance()->m_roleType, 0);
+            }
         }
         if(name.CompareNoCase(_T("audio_scene_live")) == 0) {
-            CGroupBoxUI* normalContainer = static_cast<CGroupBoxUI*>(m_pmUI.FindControl(_T("normal_groupbox")));
-            if(normalContainer)
-                normalContainer->SetFixedHeight(344);
-            CHorizontalLayoutUI* roleContainer = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("choose_role")));
-            if(roleContainer)
-                roleContainer->SetVisible(true);
             CDataCenter::GetInstance()->m_sceneParams = TRTCAppSceneVoiceChatRoom;
             //直播场景和视频通话场景默认码率值不一样。
-            updateVideoBitrateUi();
+            updateRoleUi();
+            UpdateAudioQualityUi();
         }
         if(name.CompareNoCase(_T("audio_scene_call")) == 0) {
-            CGroupBoxUI* normalContainer = static_cast<CGroupBoxUI*>(m_pmUI.FindControl(_T("normal_groupbox")));
-            if(normalContainer)
-                normalContainer->SetFixedHeight(304);
-            CHorizontalLayoutUI* roleContainer = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("choose_role")));
-            if(roleContainer)
-                roleContainer->SetVisible(false);
             CDataCenter::GetInstance()->m_sceneParams = TRTCAppSceneAudioCall;
             CDataCenter::GetInstance()->m_roleType = TRTCRoleAnchor;
             if(CDataCenter::GetInstance()->m_localInfo._bEnterRoom)
@@ -221,26 +212,92 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->switchRole(CDataCenter::GetInstance()->m_roleType);
             }
             //直播场景和视频通话场景默认码率值不一样。
-            updateVideoBitrateUi();
+            updateRoleUi();
+            UpdateAudioQualityUi();
+            LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+            if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+            {
+                ::PostMessage(m_parentHwnd, WM_USER_CMD_RoleChange, (WPARAM)CDataCenter::GetInstance()->m_roleType, 0);
+            }
         }
         if (name.CompareNoCase(_T("role_anchor")) == 0) {
             CDataCenter::GetInstance()->m_roleType = TRTCRoleAnchor;
+            CHorizontalLayoutUI* pHLayout = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("livetype")));
+            pHLayout->SetVisible(false);
+
+
             if (CDataCenter::GetInstance()->m_localInfo._bEnterRoom)
             {
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->switchRole(CDataCenter::GetInstance()->m_roleType);
+            }
+            LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+            if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+            {
                 ::PostMessage(m_parentHwnd, WM_USER_CMD_RoleChange, (WPARAM)CDataCenter::GetInstance()->m_roleType, 0);
             }
         }
         if (name.CompareNoCase(_T("role_audience")) == 0) {
             CDataCenter::GetInstance()->m_roleType = TRTCRoleAudience;
+            LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+            if (_loginInfo._bEnterRoom)
+            {
+                CHorizontalLayoutUI* pHLayout = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("livetype")));
+                pHLayout->SetVisible(true);
+
+                if (CDataCenter::GetInstance()->m_emLivePlayerSourceType == TRTC_RTC)
+                {
+                    COptionUI* pRTC = static_cast<COptionUI*>(m_pmUI.FindControl(_T("trtc_rtc")));
+                    pRTC->Selected(true);
+                }
+                else
+                {
+                    COptionUI* pCDN = static_cast<COptionUI*>(m_pmUI.FindControl(_T("trtc_cdn")));
+                    pCDN->Selected(true);
+                }
+            }
+           
             if (CDataCenter::GetInstance()->m_localInfo._bEnterRoom)
             {
-                //需要关闭所有的流：
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->switchRole(CDataCenter::GetInstance()->m_roleType);
+            }
+
+            if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+            {
                 ::PostMessage(m_parentHwnd, WM_USER_CMD_RoleChange, (WPARAM)CDataCenter::GetInstance()->m_roleType, 0);
             }
         }
-        
+        if (name.CompareNoCase(_T("trtc_rtc")) == 0) {
+           
+            LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+            if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+            {
+                COptionUI* pSceneCall = static_cast<COptionUI*>(m_pmUI.FindControl(_T("scene_call")));
+                pSceneCall->SetEnabled(true);
+                COptionUI* pAudioSceneCall = static_cast<COptionUI*>(m_pmUI.FindControl(_T("audio_scene_call")));
+                pAudioSceneCall->SetEnabled(true);
+                COptionUI* pAudioSceneLive = static_cast<COptionUI*>(m_pmUI.FindControl(_T("audio_scene_live")));
+                pAudioSceneLive->SetEnabled(true);
+                COptionUI* pRoleAnchor = static_cast<COptionUI*>(m_pmUI.FindControl(_T("role_anchor")));
+                pRoleAnchor->SetEnabled(true);
+                ::PostMessage(m_parentHwnd, WM_USER_CMD_LiveTypeChange, (WPARAM)TRTC_RTC, 0);
+            }
+        }
+        if (name.CompareNoCase(_T("trtc_cdn")) == 0) {
+         
+            LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+            if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+            {
+                COptionUI* pSceneCall = static_cast<COptionUI*>(m_pmUI.FindControl(_T("scene_call")));
+                pSceneCall->SetEnabled(false);
+                COptionUI* pAudioSceneCall = static_cast<COptionUI*>(m_pmUI.FindControl(_T("audio_scene_call")));
+                pAudioSceneCall->SetEnabled(false);
+                COptionUI* pAudioSceneLive = static_cast<COptionUI*>(m_pmUI.FindControl(_T("audio_scene_live")));
+                pAudioSceneLive->SetEnabled(false);
+                COptionUI* pRoleAnchor = static_cast<COptionUI*>(m_pmUI.FindControl(_T("role_anchor")));
+                pRoleAnchor->SetEnabled(false);
+                ::PostMessage(m_parentHwnd, WM_USER_CMD_LiveTypeChange, (WPARAM)TRTC_CDN, 0);
+            }
+        }
         if (name.CompareNoCase(_T("mix_temp_manual")) == 0) {
             CDataCenter::GetInstance()->m_mixTemplateID = TRTCTranscodingConfigMode_Manual;
         }
@@ -330,8 +387,19 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
             sText.Format(_T("%d%%"),volume);
             pLabelValue->SetText(sText);
             CDataCenter::GetInstance()->m_audioCaptureVolume = volume;
-            if(TRTCCloudCore::GetInstance()->getTRTCCloud())
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->setAudioCaptureVolume(volume * AUDIO_DEVICE_VOLUME_TICKET / 100);
+            if (CDataCenter::GetInstance()->m_bOpenDemoTestConfig)
+            {
+                if (TRTCCloudCore::GetInstance()->getTRTCCloud())
+                    TRTCCloudCore::GetInstance()->getTRTCCloud()->setAudioCaptureVolume(volume * AUDIO_DEVICE_VOLUME_TICKET / 100);
+            }
+            else
+            {
+                if (TRTCCloudCore::GetInstance()->getTRTCCloud()->getAudioEffectManager())
+                {
+                    TRTCCloudCore::GetInstance()->getTRTCCloud()->getAudioEffectManager()->setVoiceCaptureVolume(volume);
+                }
+            }
+            
         }
         if(name.CompareNoCase(_T("slider_app_playout_volume")) == 0)
         {
@@ -342,7 +410,8 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
             sText.Format(_T("%d%%"),volume);
             pLabelValue->SetText(sText);
             CDataCenter::GetInstance()->m_audioPlayoutVolume = volume;
-            if(TRTCCloudCore::GetInstance()->getTRTCCloud())
+
+            if (TRTCCloudCore::GetInstance()->getTRTCCloud())
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->setAudioPlayoutVolume(volume * AUDIO_DEVICE_VOLUME_TICKET / 100);
         }
         if (name.CompareNoCase(_T("slider_beauty_value")) == 0)
@@ -414,6 +483,8 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
                 CDataCenter::GetInstance()->m_videoEncParams.videoResolution = TRTCVideoResolution_960_540;
             else if (msg.wParam == 16)
                 CDataCenter::GetInstance()->m_videoEncParams.videoResolution = TRTCVideoResolution_1280_720;
+            else if (msg.wParam == 17)
+                CDataCenter::GetInstance()->m_videoEncParams.videoResolution = TRTCVideoResolution_1920_1080;
 
             updateVideoBitrateUi();
 
@@ -421,6 +492,10 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
         }
         else if (name.CompareNoCase(_T("combo_camera")) == 0) 
         {
+            if (is_init_device_combo_list_) {
+                is_init_device_combo_list_ = false;
+                return;
+            }
             CComboUI* pDeviceSender = static_cast<CComboUI*>(msg.pSender);
             if (pDeviceSender)
             {
@@ -436,6 +511,10 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
         }
         else if (name.CompareNoCase(_T("combo_speaker_device")) == 0) 
         {
+            if (is_init_device_combo_list_) {
+                is_init_device_combo_list_ = false;
+                return;
+            }
             CComboUI* pDeviceSender = static_cast<CComboUI*>(msg.pSender);
             if (pDeviceSender)
             {
@@ -451,6 +530,10 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
         }
         else if (name.CompareNoCase(_T("combo_mic_device")) == 0) 
         {
+            if (is_init_device_combo_list_) {
+                is_init_device_combo_list_ = false;
+                return;
+            }
             CComboUI* pDeviceSender = static_cast<CComboUI*>(msg.pSender);
             if (pDeviceSender)
             {
@@ -462,6 +545,22 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
                     if (TRTCCloudCore::GetInstance())
                         TRTCCloudCore::GetInstance()->selectMicDevice(wsDevice.GetData());
                 }
+            }
+        }
+        else if (name.CompareNoCase(_T("combo_audio_quality")) == 0)
+        {
+            if (is_init_audio_quality_combo){
+                is_init_audio_quality_combo = false;
+                return; 
+            }
+            if (msg.wParam == 0) {
+                CDataCenter::GetInstance()->audio_quality_ = TRTCAudioQualitySpeech;
+            }
+            else if(msg.wParam == 1) {
+                CDataCenter::GetInstance()->audio_quality_ = TRTCAudioQualityDefault;
+            }
+            else if (msg.wParam == 2) {
+                CDataCenter::GetInstance()->audio_quality_ = TRTCAudioQualityMusic;
             }
         }
     }
@@ -734,167 +833,29 @@ void TRTCSettingViewController::Notify(TNotifyUI & msg)
     }
 }
 
-void TRTCSettingViewController::NotifyAudioEffectTab(TNotifyUI & msg)
+void TRTCSettingViewController::NotifyAudioTab(TNotifyUI & msg)
 {
     if (msg.sType == _T("click"))
     {
-        if (msg.pSender->GetName() == _T("check_btn_effect1_start"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam1);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/clap.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.volume = 100;
-                effect.effectId = 1;
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
+        if (msg.pSender->GetName() == _T("check_mic_mute")) {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if (pOpenSender->IsSelected() == false) { //事件值是反的
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->setCurrentMicDeviceMute(true);
             }
-            else
-            {
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->stopAudioEffect(effect.effectId);
-                effect.effectId = 0;
+            else {
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->setCurrentMicDeviceMute(false);
             }
         }
-        else if (msg.pSender->GetName() == _T("check_btn_effect1_loop"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam1);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-                effect.loopCount = 1000;
-            else
-                effect.loopCount = 1;
-            if (effect.effectId > 0)
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/clap.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
+        else if (msg.pSender->GetName() == _T("check_speaker_mute")) {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if (pOpenSender->IsSelected() == false) { //事件值是反的
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->setCurrentSpeakerDeviceMute(true);
+            }
+            else {
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->setCurrentSpeakerDeviceMute(false);
             }
         }
-        else if (msg.pSender->GetName() == _T("check_btn_effect1_publish"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam1);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-                effect.publish = true;
-            else
-                effect.publish = false;
-            if (effect.effectId > 0)
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/clap.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-        }
-
-        if (msg.pSender->GetName() == _T("check_btn_effect2_start"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam2);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/gift_sent.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                effect.volume = 100;
-                effect.effectId = 2;
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-            else
-            {
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->stopAudioEffect(effect.effectId);
-                effect.effectId = 0;
-            }
-        }
-        else if (msg.pSender->GetName() == _T("check_btn_effect2_loop"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam2);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-                effect.loopCount = 1000;
-            else
-                effect.loopCount = 1;
-            if (effect.effectId > 0)
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/gift_sent.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-        }
-        else if (msg.pSender->GetName() == _T("check_btn_effect2_publish"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam2);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-                effect.publish = true;
-            else
-                effect.publish = false;
-            if (effect.effectId > 0)
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/gift_sent.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-        }
-
-        if (msg.pSender->GetName() == _T("check_btn_effect3_start"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam3);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/on_mic.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                effect.volume = 100;
-                effect.effectId = 3;
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-            else
-            {
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->stopAudioEffect(effect.effectId);
-                effect.effectId = 0;
-            }
-        }
-        else if (msg.pSender->GetName() == _T("check_btn_effect3_loop"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam3);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-                effect.loopCount = 1000;
-            else
-                effect.loopCount = 1;
-            if (effect.effectId > 0)
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/on_mic.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-        }
-        else if (msg.pSender->GetName() == _T("check_btn_effect3_publish"))
-        {
-            TRTCAudioEffectParam& effect = (*m_audioEffectParam3);
-            COptionUI* pTestAudioEffect = static_cast<COptionUI*>(msg.pSender);
-            if (pTestAudioEffect->IsSelected() == false) //事件值是反的
-                effect.publish = true;
-            else
-                effect.publish = false;
-            if (effect.effectId > 0)
-            {
-                std::wstring testFileMp = TrtcUtil::getAppDirectory() + L"trtcres/on_mic.aac"; //gift_sent on_mic
-                std::string testFileAcc = Wide2UTF8(testFileMp);
-                effect.path = testFileAcc.c_str();
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playAudioEffect(&effect);
-            }
-        }
-
-        if (msg.pSender->GetName() == _T("check_btn_aec"))
+        else if (msg.pSender->GetName() == _T("check_btn_aec"))
         {
             COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
             if (pOpenSender->IsSelected() == false) //事件值是反的
@@ -911,7 +872,7 @@ void TRTCSettingViewController::NotifyAudioEffectTab(TNotifyUI & msg)
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->callExperimentalAPI(api.c_str());
             }
         }
-        if (msg.pSender->GetName() == _T("check_btn_ans"))
+        else if (msg.pSender->GetName() == _T("check_btn_ans"))
         {
             COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
             if (pOpenSender->IsSelected() == false) //事件值是反的
@@ -928,7 +889,7 @@ void TRTCSettingViewController::NotifyAudioEffectTab(TNotifyUI & msg)
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->callExperimentalAPI(api.c_str());
             }
         }
-        if (msg.pSender->GetName() == _T("check_btn_agc"))
+        else if (msg.pSender->GetName() == _T("check_btn_agc"))
         {
             COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
             if (pOpenSender->IsSelected() == false) //事件值是反的
@@ -945,89 +906,24 @@ void TRTCSettingViewController::NotifyAudioEffectTab(TNotifyUI & msg)
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->callExperimentalAPI(api.c_str());
             }
         }
-        if(msg.pSender->GetName() == _T("check_btn_testbgm"))
+        else if(msg.pSender->GetName() == _T("check_system_audio_mix"))
         {
-            COptionUI* pTestSender = static_cast<COptionUI*>(msg.pSender);
-            if(pTestSender->IsSelected() == false) //事件值是反的
-            {
-                std::wstring testFileMp3 = TrtcUtil::getAppDirectory() + L"trtcres/testspeak.mp3";
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->playBGM(Wide2UTF8(testFileMp3).c_str());
 
-                m_bStartTestBGM = true;
-            } else
-            {
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->stopBGM();
-                m_bStartTestBGM = false;
-                m_nBGMPublishVolume = 100;
-                m_nBGMPlayoutVolume = 100;
-                {
-                    CSliderUI* pSlider = static_cast<CSliderUI*>(m_pmUI.FindControl(_T("slider_bgm_publish_volume")));
-                    if(pSlider)  pSlider->SetValue(m_nBGMPublishVolume);
-                    CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("lable_bgm_publish_volume")));
-                    if(pLabelValue)
-                    {
-                        CDuiString sText;
-                        sText.Format(_T("%d%%"),m_nBGMPublishVolume);
-                        pLabelValue->SetText(sText);
-                    }
-                }
-                {
-                    CSliderUI* pSlider = static_cast<CSliderUI*>(m_pmUI.FindControl(_T("slider_bgm_playout_volume")));
-                    if(pSlider)  pSlider->SetValue(m_nBGMPlayoutVolume);
-                    CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("lable_bgm_playout_volume")));
-                    if(pLabelValue)
-                    {
-                        CDuiString sText;
-                        sText.Format(_T("%d%%"),m_nBGMPlayoutVolume);
-                        pLabelValue->SetText(sText);
-                    }
-                }
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->setBGMPlayoutVolume(m_nBGMPlayoutVolume);
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->setBGMPublishVolume(m_nBGMPlayoutVolume);
-            }
-        }
-        if(msg.pSender->GetName() == _T("check_system_audio_mix"))
-        {
-            #ifndef _WIN64
             COptionUI* pTestSystemVoice = static_cast<COptionUI*>(msg.pSender);
             if(pTestSystemVoice->IsSelected() == false) //事件值是反的
             {
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->startSystemAudioLoopback();
-                m_bStartSystemVoice = true;
+                CDataCenter::GetInstance()->m_bStartSystemVoice = true;
             } else
             {
                 TRTCCloudCore::GetInstance()->getTRTCCloud()->stopSystemAudioLoopback();
-                m_bStartSystemVoice = false;
+                CDataCenter::GetInstance()->m_bStartSystemVoice = false;
             }
-            #endif
+
         }
     }
     else if (msg.sType == _T("valuechanged"))
     {
-        if(msg.pSender->GetName() == _T("slider_bgm_playout_volume"))
-        {
-            CProgressUI* pSlider = static_cast<CProgressUI*>(m_pmUI.FindControl(_T("slider_bgm_playout_volume")));
-            CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("lable_bgm_playout_volume")));
-            CDuiString sText;
-            int volume = pSlider->GetValue();
-            sText.Format(_T("%d%%"),volume);
-            pLabelValue->SetText(sText);
-            CDataCenter::GetInstance()->m_audioCaptureVolume = volume;
-            if(TRTCCloudCore::GetInstance()->getTRTCCloud())
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->setBGMPlayoutVolume(volume * AUDIO_DEVICE_VOLUME_TICKET / 100);
-        }
-        if(msg.pSender->GetName() == _T("slider_bgm_publish_volume"))
-        {
-            CProgressUI* pSlider = static_cast<CProgressUI*>(m_pmUI.FindControl(_T("slider_bgm_publish_volume")));
-            CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("lable_bgm_publish_volume")));
-            CDuiString sText;
-            int volume = pSlider->GetValue();
-            sText.Format(_T("%d%%"),volume);
-            pLabelValue->SetText(sText);
-            CDataCenter::GetInstance()->m_audioCaptureVolume = volume;
-            if(TRTCCloudCore::GetInstance()->getTRTCCloud())
-                TRTCCloudCore::GetInstance()->getTRTCCloud()->setBGMPublishVolume(volume * AUDIO_DEVICE_VOLUME_TICKET / 100);
-        }
     }
 }
 
@@ -1096,6 +992,46 @@ void TRTCSettingViewController::NotifyOtherTab(TNotifyUI & msg)
             }
             ::PostMessage(m_parentHwnd, WM_USER_SET_SHOW_VOICEVOLUME, (WPARAM)CDataCenter::GetInstance()->m_bShowAudioVolume, 0);
         }
+        else if (msg.pSender->GetName() == _T("check_use_main_stream")) {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if (pOpenSender->IsSelected() == false) //事件值是反的
+            {
+                CDataCenter::GetInstance()->m_bPublishScreenInBigStream = true;
+            }
+            else
+            {
+                CDataCenter::GetInstance()->m_bPublishScreenInBigStream = false;
+            }
+        }
+
+        else if (msg.pSender->GetName() == _T("check_localvideo_open"))
+        {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if (pOpenSender->IsSelected() == false)
+            {
+                CDataCenter::GetInstance()->m_bMuteLocalVideo = false;
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalVideo(false);
+            }
+            else
+            {
+                CDataCenter::GetInstance()->m_bMuteLocalVideo = true;
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalVideo(true);
+            }
+        }
+        else if (msg.pSender->GetName() == _T("check_localaudio_open"))
+        {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if (pOpenSender->IsSelected() == false)
+            {
+                CDataCenter::GetInstance()->m_bMuteLocalAudio = false;
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalAudio(false);
+            }
+            else
+            {
+                CDataCenter::GetInstance()->m_bMuteLocalAudio = true;
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->muteLocalAudio(true);
+            }
+        }
     }
 
 }
@@ -1132,7 +1068,7 @@ void TRTCSettingViewController::NotifyMixTab(TNotifyUI & msg)
                 return;
             }
 
-            std::string  sourceStr = format("%d_%s_main",info._roomId,info._userId.c_str());
+            std::string  sourceStr = format("%d_%s_main",info._roomId,info._userId.c_str()); 
             //http ://3891.liveplay.myqcloud.com/live/3891_12acca9a50faeaf9f92c9c202eb9bb2d.flv
 
             BYTE fingerPrintStableMD5[MD5_RESULT_LEN] ={0};
@@ -1149,19 +1085,15 @@ void TRTCSettingViewController::NotifyMixTab(TNotifyUI & msg)
             std::transform(strMd5.begin(),strMd5.end(),strMd5.begin(),::tolower);
             std::string strStreamId = format("%d_%s",GenerateTestUserSig::BIZID, strMd5.c_str());
 
-            if(CDataCenter::GetInstance()->m_strCustomStreamId.empty() == false)
-            {
+            if(CDataCenter::GetInstance()->m_strCustomStreamId.empty() == false) {
                 strStreamId = CDataCenter::GetInstance()->m_strCustomStreamId;
             }
 
-            RemoteUserInfoList& remoteMetaInfo = CDataCenter::GetInstance()->m_remoteUser;
-            LocalUserInfo& localMetaInfo = CDataCenter::GetInstance()->getLocalUserInfo();
-            if(remoteMetaInfo.size() > 0 || localMetaInfo.publish_sub_video || (remoteMetaInfo.size() == 0 && CDataCenter::GetInstance()->m_bOpenAudioAndCanvasMix))
-            {
-                if (CDataCenter::GetInstance()->m_strMixStreamId.empty() == false)
-                    strStreamId = CDataCenter::GetInstance()->m_strMixStreamId;
+            if (CDataCenter::GetInstance()->m_strMixStreamId.empty() == false) {
+                strStreamId = CDataCenter::GetInstance()->m_strMixStreamId;
             }
-            std::wstring wstrStreamId = UTF82Wide(strStreamId);
+
+            std::wstring wstrStreamId = UTF82Wide(strStreamId); 
             std::wstring wstrUrl = format(L"播放地址: http://%d.liveplay.myqcloud.com/live/%s.flv 已经复制到剪切板",GenerateTestUserSig::BIZID,wstrStreamId.c_str());
             CMsgWnd::ShowMessageBox(GetHWND(),_T("TRTCDuilibDemo"),wstrUrl.c_str(),0xFFF08080);
 
@@ -1177,51 +1109,6 @@ void TRTCSettingViewController::NotifyMixTab(TNotifyUI & msg)
             ::EmptyClipboard(); // 清空剪贴板
             ::SetClipboardData(CF_TEXT,hGlobalMemory); // 将内存中的数据放置到剪贴板
             ::CloseClipboard(); // 关闭剪贴板
-        } 
-        else if(msg.pSender->GetName() == _T("check_audio_canvas_mix"))
-        {
-            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
-            if(pOpenSender->IsSelected() == false) //事件值是反的
-            {
-                CDataCenter::GetInstance()->m_bOpenAudioAndCanvasMix = true;
-            } else
-            {
-                CDataCenter::GetInstance()->m_bOpenAudioAndCanvasMix = false;
-            }
-            TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
-        }
-        else if(msg.pSender->GetName() == _T("btn_update_custom_streamid"))
-        {
-            CEditUI* pEdit = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_custom_streamid")));
-            if(pEdit != nullptr)
-            {
-                std::wstring strId = pEdit->GetText();
-                if(!(strId.compare(L"") == 0))
-                {
-                    if(isCustomUploaderStreamIdValid(Wide2UTF8(strId)) == false)
-                    {
-                        MessageBox(0,L"valid stream id, must in a~z A~Z 0~9",L"error update",0);
-                        return;
-                    }
-                    std::string streamid = Wide2UTF8(strId);
-                    if (CDataCenter::GetInstance()->m_strCustomStreamId != streamid)
-                    {
-                        CDataCenter::GetInstance()->m_strCustomStreamId = streamid;
-                        TRTCCloudCore::GetInstance()->getTRTCCloud()->startPublishing(CDataCenter::GetInstance()->m_strCustomStreamId.c_str(),TRTCVideoStreamTypeBig);
-                        TRTCCloudCore::GetInstance()->updateMixTranCodeInfo();
-                    }
-                }
-                else
-                {
-                    if (CDataCenter::GetInstance()->m_strCustomStreamId != "")
-                    {
-                        CDataCenter::GetInstance()->m_strCustomStreamId = "";
-                        TRTCCloudCore::GetInstance()->getTRTCCloud()->setMixTranscodingConfig(NULL);
-                        TRTCCloudCore::GetInstance()->getTRTCCloud()->stopPublishing();
-
-                    }
-                }
-            }
         }
         else if(msg.pSender->GetName() == _T("btn_update_mix_streamid"))
         {
@@ -1247,6 +1134,210 @@ void TRTCSettingViewController::NotifyMixTab(TNotifyUI & msg)
         }
     }
 }
+
+void TRTCSettingViewController::NotifyRecordTab(TNotifyUI & msg)
+{
+    CDuiString name = msg.pSender->GetName();
+    if(msg.sType == _T("click"))
+    {
+        if(msg.pSender->GetName() == _T("check_start_record"))
+        {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if(pOpenSender->IsSelected() == false) //事件值是反的
+            {
+                LiteAVScreenCaptureSourceInfo source = CDataCenter::GetInstance()->m_recordCaptureSourceInfo;
+                std::string path = Wide2UTF8(CDataCenter::GetInstance()->m_wstrRecordFile);
+                if (source.type == LiteAVScreenCaptureSourceTypeUnknown)
+                {
+                    CMsgWnd::ShowMessageBox(GetHWND(),_T("TRTCDuilibDemo"),_T("启动录制失败，您尚未选择录制内容！"),0xFFF08080);
+                    pOpenSender->Selected(true);
+                    return;
+                }
+                if(path.empty())
+                {
+                    CMsgWnd::ShowMessageBox(GetHWND(),_T("TRTCDuilibDemo"),_T("启动录制失败，您尚未输入录制文件地址！"),0xFFF08080);
+                    pOpenSender->Selected(true);
+                    return;
+                }
+
+                TRTCCloudCore::GetInstance()->startLocalRecord(source,path.c_str());
+
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+                if(pLabelValue)
+                {
+                    CDuiString sText;
+                    sText.Format(_T("正在启动录制:%s ...."), CDataCenter::GetInstance()->m_recordCaptureSourceInfoName.c_str());
+                    pLabelValue->SetText(sText);
+                }
+
+                CDataCenter::GetInstance()->m_bPauseLocalRecord = false;
+                CDataCenter::GetInstance()->m_bStartLocalRecord = true;
+            }
+            else
+            {
+                CDataCenter::GetInstance()->m_bPauseLocalRecord = false;
+                CDataCenter::GetInstance()->m_bStartLocalRecord = false;
+
+                TRTCCloudCore::GetInstance()->stopLocalRecord();
+
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+                if(pLabelValue)
+                {
+                    pLabelValue->SetText(L"");
+                }
+
+                CLabelUI* pLabelRecordHwndNameValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_hwnd_name")));
+                if (pLabelRecordHwndNameValue)
+                {
+                    pLabelRecordHwndNameValue->SetText(L"");
+                }
+            }
+        }
+        else if(msg.pSender->GetName() == _T("check_pause_record"))
+        {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if(pOpenSender->IsSelected() == false) //事件值是反的
+            {
+                if(CDataCenter::GetInstance()->m_bStartLocalRecord == false)
+                {
+                    CMsgWnd::ShowMessageBox(GetHWND(),_T("TRTCDuilibDemo"),_T("暂停录制失败，您尚未启动录制！"),0xFFF08080);
+                    pOpenSender->Selected(true);
+                    return;
+                }
+                TRTCCloudCore::GetInstance()->pauseLocalRecord();
+
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+                if(pLabelValue)
+                    pLabelValue->SetText(_T("暂停录制..."));
+            } else
+            {
+                if(CDataCenter::GetInstance()->m_bPauseLocalRecord == false || CDataCenter::GetInstance()->m_bStartLocalRecord == false)
+                {
+                    CMsgWnd::ShowMessageBox(GetHWND(),_T("TRTCDuilibDemo"),_T("取消暂停录制失败，当前录制状态不对！"),0xFFF08080);
+                    pOpenSender->Selected(true);
+                    return;
+                }
+                TRTCCloudCore::GetInstance()->resumeLocalRecord();
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+                if(pLabelValue)
+                    pLabelValue->SetText(L"唤醒录制....");
+            }
+        }
+        else if(msg.pSender->GetName() == _T("btn_update_recode_hwnd"))
+        {
+            UiShareSelect uiShareSelect;
+            uiShareSelect.Create(GetHWND() ,_T("选择录制内容"),UI_WNDSTYLE_DIALOG,0);
+            uiShareSelect.CenterWindow();
+            UINT nRet = uiShareSelect.ShowModal();
+            if(nRet == IDOK)
+            {
+                TRTCScreenCaptureSourceInfo info = uiShareSelect.getSelectWnd();
+                CDataCenter::GetInstance()->m_recordCaptureSourceInfo = uiShareSelect.getSelectWnd();
+                std::string sourceName = info.sourceName == nullptr ? "" : info.sourceName;
+                CDataCenter::GetInstance()->m_recordCaptureSourceInfoName = UTF82Wide(sourceName);
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_hwnd_name")));
+                if(pLabelValue)
+                {
+                    CDuiString sText; 
+                    sText.Format(_T("窗口:%s"),UTF82Wide(sourceName).c_str());
+                    pLabelValue->SetText(sText);
+                }
+            }
+        }
+        else if(msg.pSender->GetName() == _T("btn_update_record_filepath"))
+        {
+            CEditUI* pEdit = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_record_filepath")));
+            if(pEdit != nullptr)
+            {
+                std::wstring strId = pEdit->GetText();
+                if(strId.compare(L"") == 0)
+                {
+                    CDataCenter::GetInstance()->m_wstrRecordFile = L"";
+                }
+                else
+                {
+                    CDataCenter::GetInstance()->m_wstrRecordFile = strId;
+                }
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+                if(pLabelValue)
+                {
+                    CDuiString sText;
+                    sText.Format(_T("更新录制文件路径：%s"),CDataCenter::GetInstance()->m_wstrRecordFile.c_str());
+                    pLabelValue->SetText(sText);
+                }
+            }
+        }
+    }
+}
+
+void TRTCSettingViewController::NotifyAudioRecord(TNotifyUI & msg)
+{
+    CDuiString name = msg.pSender->GetName();
+    if (msg.sType == _T("click"))
+    {
+        if (msg.pSender->GetName() == _T("check_start_audio_record"))
+        {
+            COptionUI* pOpenSender = static_cast<COptionUI*>(msg.pSender);
+            if (pOpenSender->IsSelected() == false) //事件值是反的
+            {
+                if (m_strAudioRecordFile.empty())
+                {
+                    CMsgWnd::ShowMessageBox(GetHWND(), _T("TRTCDuilibDemo"), _T("启动录音失败，您尚未输入录音文件地址！"), 0xFFF08080);
+                    pOpenSender->Selected(true);
+                    return;
+                }
+                TRTCAudioRecordingParams audioRecordingParams;
+
+                string strFile = Wide2UTF8(m_strAudioRecordFile);
+                audioRecordingParams.filePath = strFile.c_str();
+
+                int nResult = TRTCCloudCore::GetInstance()->getTRTCCloud()->startAudioRecording(audioRecordingParams);
+                CDataCenter::GetInstance()->m_bStartAudioRecording = true;
+                CDataCenter::GetInstance()->m_wstrAudioRecordFile = m_strAudioRecordFile;
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_audio_record_opt_status")));
+                if (pLabelValue)
+                {
+                    CDuiString sText;
+                    sText.Format(_T("正在启动录音:%s ...."), m_strAudioRecordFile.c_str());
+                    pLabelValue->SetText(sText);
+                }
+            }
+            else
+            {
+
+                TRTCCloudCore::GetInstance()->getTRTCCloud()->stopAudioRecording();
+                CDataCenter::GetInstance()->m_bStartAudioRecording = false;
+                m_strAudioRecordFile = L"";
+                CDataCenter::GetInstance()->m_wstrAudioRecordFile = m_strAudioRecordFile;
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_audio_record_opt_status")));
+                if (pLabelValue)
+                {
+                    pLabelValue->SetText(L"停止录制...");
+                }
+
+            }
+        }
+        else if (msg.pSender->GetName() == _T("btn_update_audio_record_filepath"))
+        {
+            CEditUI* pEdit = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_audio_record_filepath")));
+            if (pEdit != nullptr)
+            {
+                wstring strFile = pEdit->GetText();
+
+                m_strAudioRecordFile = strFile;
+
+                CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_audio_record_opt_status")));
+                if (pLabelValue)
+                {
+                    CDuiString sText;
+                    sText.Format(_T("更新录音文件路径：%s"), strFile.c_str());
+                    pLabelValue->SetText(sText);
+                }
+            }
+        }
+    }
+}
+
 
 DuiLib::CControlUI* TRTCSettingViewController::CreateControl(LPCTSTR pstrClass)
 {
@@ -1296,17 +1387,83 @@ void TRTCSettingViewController::onTestSpeakerVolume(uint32_t volume)
     ::PostMessage(GetHWND(), WM_USER_CMD_SpeakerVolumeCallback, (WPARAM)volume, 0);
 }
 
+
+
+void TRTCSettingViewController::DoRecordError(int nRet,std::string msg)
+{
+    if (nRet == ERR_RECORD_SUCCESS)
+    {
+        CDataCenter::GetInstance()->m_bWaitStartRecordNotify = false;
+        CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+        if(pLabelValue)
+            pLabelValue->SetText(L"启动录制成功");
+
+    }
+    else if (nRet == ERR_RECORD_PARAM_INVALID || nRet == ERR_START_RECORD_EXE_FAULURE || nRet == ERR_CREATE_RECORD_FILE_FAILURE || nRet == ERR_RECORD_CANCEL_BY_EXCEPTION)
+    {
+        TRTCCloudCore::GetInstance()->stopLocalRecord();
+        COptionUI* pCheckUI = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_start_record")));
+        if(pCheckUI)
+            pCheckUI->Selected(false);
+
+        CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+        if(pLabelValue)
+        {
+            CDuiString sText;
+            sText.Format(_T("启动录制失败:%s"), UTF82Wide(msg).c_str());
+            pLabelValue->SetText(sText);
+        }
+    }
+
+}
+
+void TRTCSettingViewController::DoRecordComplete(std::string path)
+{
+    CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+    if(pLabelValue)
+    {
+        CDuiString sText;
+        sText.Format(_T("录制文件生成:%s"),UTF82Wide(path).c_str());
+        pLabelValue->SetText(sText);
+    }
+}
+
+void TRTCSettingViewController::DoRecordProgress(int duration,int fileSize)
+{
+    int duration_s = duration / 1000;
+    int h,m,s;
+    h = duration_s / 3600;
+    m = (duration_s % 3600) / 60;
+    s = duration_s % 3600 % 60;
+
+    CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+    if(pLabelValue)
+    {
+        CDuiString sText;
+        if (CDataCenter::GetInstance()->m_bPauseLocalRecord)
+            sText.Format(_T("【暂停录制】录制时长【 %d:%d:%d 】, 录制大小【 %d KB 】"), h, m , s ,fileSize / 1024);
+        else
+            sText.Format(_T("录制时长【 %d:%d:%d 】, 录制大小【 %d KB 】"), h, m , s ,fileSize / 1024);
+        pLabelValue->SetText(sText);
+    }
+    CDataCenter::GetInstance()->m_bWaitStartRecordNotify = true;
+}
+
 void TRTCSettingViewController::InitWindow()
 {
     TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_DeviceChange, GetHWND());
+
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_OnRecordProgress, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_OnRecordError, GetHWND());
+    TRTCCloudCore::GetInstance()->regSDKMsgObserver(WM_USER_CMD_OnRecordComplete, GetHWND());
     SetIcon(IDR_MAINFRAME);
 
     InitNormalTab();
     InitAudioTab();
-	InitAudioEffectTab();
     InitVideoTab();
     InitOtherTab();
     InitMixTab();
+    InitRecordTab();
 
     //初始化tab面板  
     CTabLayoutUI* pTabSwitch = static_cast<CTabLayoutUI*>(m_pmUI.FindControl(_T("tab_switch")));
@@ -1333,6 +1490,8 @@ void TRTCSettingViewController::InitWindow()
         }
         }
     }
+
+    is_init_windows_finished = true;
 }
 
 void TRTCSettingViewController::InitNormalTab()
@@ -1378,24 +1537,11 @@ void TRTCSettingViewController::InitNormalTab()
         if (appScene == TRTCAppSceneLIVE)
             pSceneLive->Selected(true);
         if(appScene == TRTCAppSceneAudioCall)
-            pAudioSceneLive->Selected(true);
-        if(appScene == TRTCAppSceneVoiceChatRoom)
             pAudioSceneCall->Selected(true);
+        if(appScene == TRTCAppSceneVoiceChatRoom)
+            pAudioSceneLive->Selected(true);
     }
-
-    TRTCRoleType roleType = CDataCenter::GetInstance()->m_roleType;
-    COptionUI* pRoleAnchor = static_cast<COptionUI*>(m_pmUI.FindControl(_T("role_anchor")));
-    COptionUI* pRoleAudience = static_cast<COptionUI*>(m_pmUI.FindControl(_T("role_audience")));
-    if (pRoleAnchor && pRoleAudience)
-    {
-        pRoleAnchor->Selected(false);
-        pRoleAudience->Selected(false);
-        if (roleType == TRTCRoleAnchor)
-            pRoleAnchor->Selected(true);
-        if (roleType == TRTCRoleAudience)
-            pRoleAudience->Selected(true);
-    }
-
+   
     //处理大小流的设置配置
     COptionUI* pPushSmallVideo = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_push_smallvideo")));
     COptionUI* pPlaySmallVideo = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_play_smallvideo")));
@@ -1416,10 +1562,36 @@ void TRTCSettingViewController::InitNormalTab()
     COptionUI* pManualMode = static_cast<COptionUI*>(m_pmUI.FindControl(_T("manual_mode")));
     if (pAutoMode && pAudioMode && pVideoMode && pManualMode)
     {
-        pAutoMode->Selected(true);
-        pAudioMode->Selected(false);
-        pVideoMode->Selected(false);
-        pManualMode->Selected(false);
+        if (CDataCenter::GetInstance()->m_bAutoRecvAudio == true && CDataCenter::GetInstance()->m_bAutoRecvVideo == true)
+        {
+            pAutoMode->Selected(true);
+            pAudioMode->Selected(false);
+            pVideoMode->Selected(false);
+            pManualMode->Selected(false);
+        }
+        else  if (CDataCenter::GetInstance()->m_bAutoRecvAudio == true && CDataCenter::GetInstance()->m_bAutoRecvVideo == false)
+        {
+            pAutoMode->Selected(false);
+            pAudioMode->Selected(true);
+            pVideoMode->Selected(false);
+            pManualMode->Selected(false);
+        }
+        else  if (CDataCenter::GetInstance()->m_bAutoRecvAudio == false && CDataCenter::GetInstance()->m_bAutoRecvVideo == true)
+        {
+            pAutoMode->Selected(false);
+            pAudioMode->Selected(false);
+            pVideoMode->Selected(true);
+            pManualMode->Selected(false);
+        }
+        else  if (CDataCenter::GetInstance()->m_bAutoRecvAudio == false && CDataCenter::GetInstance()->m_bAutoRecvVideo == false)
+        {
+            pAutoMode->Selected(false);
+            pAudioMode->Selected(false);
+            pVideoMode->Selected(false);
+            pManualMode->Selected(true);
+        }
+       
+       
     }
 
     //处理美颜设置 
@@ -1500,8 +1672,14 @@ void TRTCSettingViewController::InitAudioTab()
             sText.Format(_T("%d%%"), nVolume);
             pLabelValue->SetText(sText);
         }
-        if (TRTCCloudCore::GetInstance()->getTRTCCloud())
+        if (TRTCCloudCore::GetInstance()->getTRTCCloud()) {
             TRTCCloudCore::GetInstance()->getTRTCCloud()->setCurrentSpeakerVolume(nVolume * AUDIO_DEVICE_VOLUME_TICKET / 100);
+
+            bool mute = TRTCCloudCore::GetInstance()->getTRTCCloud()->getCurrentSpeakerDeviceMute();
+            COptionUI* pCheckMute = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_speaker_mute")));
+            if (pCheckMute)
+                pCheckMute->Selected(mute);
+        }
     }
     {
         uint32_t nVolume = CDataCenter::GetInstance()->m_micVolume;
@@ -1516,8 +1694,14 @@ void TRTCSettingViewController::InitAudioTab()
             sText.Format(_T("%d%%"), nVolume);
             pLabelValue->SetText(sText);
         }
-        if (TRTCCloudCore::GetInstance()->getTRTCCloud())
+        if (TRTCCloudCore::GetInstance()->getTRTCCloud()) {
             TRTCCloudCore::GetInstance()->getTRTCCloud()->setCurrentMicDeviceVolume(nVolume * AUDIO_DEVICE_VOLUME_TICKET / 100);
+
+            bool mute = TRTCCloudCore::GetInstance()->getTRTCCloud()->getCurrentMicDeviceMute();
+            COptionUI* pCheckMute = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_mic_mute")));
+            if (pCheckMute)
+                pCheckMute->Selected(mute);
+        }
     }
 
     {
@@ -1553,17 +1737,41 @@ void TRTCSettingViewController::InitAudioTab()
     //初始化进度条
     m_pProgressTestSpeaker = static_cast<CProgressUI*>(m_pmUI.FindControl(_T("progress_testspeaker")));
     m_pProgressTestMic = static_cast<CProgressUI*>(m_pmUI.FindControl(_T("progress_testmic")));
-    m_pProgressTestNetwork = static_cast<CProgressUI*>(m_pmUI.FindControl(_T("progress_testnetwork")));;
-}
+    m_pProgressTestNetwork = static_cast<CProgressUI*>(m_pmUI.FindControl(_T("progress_testnetwork")));
 
-void TRTCSettingViewController::InitAudioEffectTab()
-{
+    CComboUI* audio_quality_combo = static_cast<CComboUI*>(m_pmUI.FindControl(_T("combo_audio_quality")));
+    if (audio_quality_combo && CDataCenter::GetInstance()->audio_quality_ != TRTCAudioQualityUnSelect) {
+        is_init_audio_quality_combo = true;
+        if (CDataCenter::GetInstance()->audio_quality_ == TRTCAudioQualitySpeech) { 
+            audio_quality_combo->SelectItem(0);
+        }
+        else if (CDataCenter::GetInstance()->audio_quality_ == TRTCAudioQualityDefault)
+        {
+            audio_quality_combo->SelectItem(1);
+        }
+        else if (CDataCenter::GetInstance()->audio_quality_ == TRTCAudioQualityMusic)
+        {
+            audio_quality_combo->SelectItem(2);
+        }
+        else
+        {
+            if (CDataCenter::GetInstance()->m_sceneParams == TRTCAppSceneVideoCall ||
+                CDataCenter::GetInstance()->m_sceneParams ==  TRTCAppSceneAudioCall) { 
+                audio_quality_combo->SelectItem(0);
+            }
+            else {
+                audio_quality_combo->SelectItem(1);
+            }
+        }
+    }
+
     //音频 3A 开关
     COptionUI* pCheckAec = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_btn_aec")));
     COptionUI* pCheckAns = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_btn_ans")));
     COptionUI* pCheckAgc = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_btn_agc")));
+    COptionUI* pCheckSystemAudioMix = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_system_audio_mix")));
 
-    if (pCheckAec && pCheckAns && pCheckAgc)
+    if (pCheckAec && pCheckAns && pCheckAgc && pCheckSystemAudioMix)
     {
         if (CDataCenter::GetInstance()->m_bEnableAec)
             pCheckAec->Selected(true);
@@ -1577,38 +1785,15 @@ void TRTCSettingViewController::InitAudioEffectTab()
             pCheckAgc->Selected(true);
         else
             pCheckAgc->Selected(false);
-    }
-
-    {
-        uint32_t nVolume = CDataCenter::GetInstance()->m_micVolume;
-        nVolume = nVolume * 100 / AUDIO_DEVICE_VOLUME_TICKET;
-        CSliderUI* pSlider = static_cast<CSliderUI*>(m_pmUI.FindControl(_T("slider_bgm_playout_volume")));
-        if(pSlider)
-            pSlider->SetValue(nVolume);
-        CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("lable_bgm_playout_volume")));
-        if(pLabelValue)
+        if (CDataCenter::GetInstance()->m_bStartSystemVoice)
         {
-            CDuiString sText;
-            sText.Format(_T("%d%%"),nVolume);
-            pLabelValue->SetText(sText);
+            pCheckSystemAudioMix->Selected(true);
         }
+        else
+            pCheckSystemAudioMix->Selected(false);
     }
 
-    {
-        uint32_t nVolume = CDataCenter::GetInstance()->m_audioCaptureVolume;
-        nVolume = nVolume * 100 / AUDIO_DEVICE_VOLUME_TICKET;
-        CSliderUI* pSlider = static_cast<CSliderUI*>(m_pmUI.FindControl(_T("slider_bgm_publish_volume")));
-        if(pSlider)
-            pSlider->SetValue(nVolume);
-        CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("lable_bgm_publish_volume")));
-        if(pLabelValue)
-        {
-            CDuiString sText;
-            sText.Format(_T("%d%%"),nVolume);
-            pLabelValue->SetText(sText);
-        }
-    }
-
+    
 }
 
 void TRTCSettingViewController::InitVideoTab()
@@ -1707,6 +1892,10 @@ void TRTCSettingViewController::InitVideoTab()
         {
             pResolutionCombo->SelectItem(16);  bSetDefaultItem = true;
         }
+        else if (CDataCenter::GetInstance()->m_videoEncParams.videoResolution == TRTCVideoResolution_1920_1080)
+        {
+            pResolutionCombo->SelectItem(17);  bSetDefaultItem = true;
+        }
         if (bSetDefaultItem == false)
         {
             CDataCenter::GetInstance()->m_videoEncParams.videoResolution = TRTCVideoResolution_640_360;
@@ -1776,13 +1965,13 @@ void TRTCSettingViewController::InitOtherTab()
         pVideoFileCombo->SelectItem(0);
     }
 
-#ifdef _WIN64
-    COptionUI* pSystemAudioMix = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_system_audio_mix")));
-    if (pSystemAudioMix)
+    COptionUI* pPublishScreenInBigStream = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_use_main_stream")));
+    if (pPublishScreenInBigStream)
     {
-        pSystemAudioMix->SetEnabled(false);
+        pPublishScreenInBigStream->Selected(false);
+        if (CDataCenter::GetInstance()->m_bPublishScreenInBigStream)
+            pPublishScreenInBigStream->Selected(true);
     }
-#endif // ! _WIN64
 
     CEditUI* pEditIp = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_ip")));
     if (pEditIp != nullptr)
@@ -1794,6 +1983,30 @@ void TRTCSettingViewController::InitOtherTab()
     CEditUI* pEditPort = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_port")));
     if (pEditPort != nullptr)
         pEditPort->SetText(UTF82Wide(strPort).c_str());
+
+
+    COptionUI* pCheckLocalVideoOpenUI = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_localvideo_open")));
+    if (pCheckLocalVideoOpenUI)
+    {
+        pCheckLocalVideoOpenUI->Selected(false);
+       
+        if (!CDataCenter::GetInstance()->m_bMuteLocalVideo)
+        {
+            pCheckLocalVideoOpenUI->Selected(true);
+        }
+    }
+
+    COptionUI* pCheckLocalAudioOpenUI = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_localaudio_open")));
+    if (pCheckLocalAudioOpenUI)
+    {
+        pCheckLocalAudioOpenUI->Selected(false);
+       
+
+        if (!CDataCenter::GetInstance()->m_bMuteLocalAudio)
+        {
+            pCheckLocalAudioOpenUI->Selected(true);
+        }
+    }
 }
 
 void TRTCSettingViewController::InitMixTab()
@@ -1806,34 +2019,82 @@ void TRTCSettingViewController::InitMixTab()
             pCdnMixVideo->Selected(true);
     }
 
+    if(CDataCenter::GetInstance()->m_bOpenDemoTestConfig)
+    {
+        CHorizontalLayoutUI* customMixId = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("custom_mixid_container")));
+        if (customMixId)
+            customMixId->SetVisible(true);
+    }
+}
+
+void TRTCSettingViewController::InitRecordTab()
+{
+   
+    
+   COptionUI* pCheckUI = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_start_record")));
+    if(pCheckUI)
+    {
+        pCheckUI->Selected(false);
+        if (CDataCenter::GetInstance()->m_bStartLocalRecord)
+        {
+            pCheckUI->Selected(true);
+            CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+            if (pLabelValue)
+            {
+                CDuiString sText;
+                sText.Format(_T("正在启动录制:%s ...."), CDataCenter::GetInstance()->m_recordCaptureSourceInfoName.c_str());
+                pLabelValue->SetText(sText);
+            }
+        }
+           
+    }
+
+    pCheckUI = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_pause_record")));
+    if(pCheckUI)
+    {
+        pCheckUI->Selected(false);
+        if (CDataCenter::GetInstance()->m_bPauseLocalRecord)
+        {
+            pCheckUI->Selected(true);
+            CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_record_opt_status")));
+            if (pLabelValue)
+                pLabelValue->SetText(_T("暂停录制..."));
+        }
+           
+    }
+    
 
     if(CDataCenter::GetInstance()->m_bOpenDemoTestConfig)
     {
-        COptionUI* pMixTab = static_cast<COptionUI*>(m_pmUI.FindControl(_T("mix_tab")));
-        if(pMixTab)
-            pMixTab->SetVisible(true);
-
-        COptionUI* pMixCanvasVideo = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_audio_canvas_mix")));
-        if(pMixCanvasVideo)
+        COptionUI* pRecordTab = static_cast<COptionUI*>(m_pmUI.FindControl(_T("record_tab")));
+        if(pRecordTab)
         {
-            pMixCanvasVideo->Selected(false);
-            if(CDataCenter::GetInstance()->m_bOpenAudioAndCanvasMix)
-                pMixCanvasVideo->Selected(true);
+            pRecordTab->SetVisible(true);
         }
+    }
+   
 
-        CEditUI* pEditMixStreamId = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_mix_streamid")));
-        if(pEditMixStreamId != nullptr)
-        pEditMixStreamId->SetText(UTF82Wide(CDataCenter::GetInstance()->m_strMixStreamId).c_str());
-
-        CHorizontalLayoutUI* pLayoutCustomStreamId = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("layout_custom_streamid")));
-        if(pLayoutCustomStreamId)
+    COptionUI* pCheckAudioRecordUI = static_cast<COptionUI*>(m_pmUI.FindControl(_T("check_start_audio_record")));
+    if (pCheckAudioRecordUI)
+    {
+        pCheckAudioRecordUI->Selected(false);
+        if (CDataCenter::GetInstance()->m_bStartAudioRecording)
         {
-            pLayoutCustomStreamId->SetVisible(true);
-        }
+            pCheckAudioRecordUI->Selected(true);
 
-        CEditUI* pEditCustomStreamId = static_cast<CEditUI*>(m_pmUI.FindControl(_T("edit_custom_streamid")));
-        if(pEditCustomStreamId != nullptr)
-            pEditCustomStreamId->SetText(UTF82Wide(CDataCenter::GetInstance()->m_strCustomStreamId).c_str());
+            CLabelUI* pLabelValue = static_cast<CLabelUI*>(m_pmUI.FindControl(_T("label_audio_record_opt_status")));
+            if (pLabelValue)
+            {
+                CDuiString sText;
+                sText.Format(_T("正在启动录音:%s ...."), CDataCenter::GetInstance()->m_wstrAudioRecordFile.c_str());
+                pLabelValue->SetText(sText);
+            }
+
+        }
+        else
+        {
+            pCheckAudioRecordUI->Selected(false);
+        }
     }
 }
 
@@ -1859,17 +2120,19 @@ void TRTCSettingViewController::UpdateCameraDevice()
         }
         if (selectIndex >= 0)
         {
+            is_init_device_combo_list_ = true;
             pDeviceCombo->SelectItem(selectIndex);
             
             LocalUserInfo info = CDataCenter::GetInstance()->getLocalUserInfo();
             if (m_pVideoView->IsViewOccupy() == false)
             {
-                m_pVideoView->RegEngine(info._userId, TRTCVideoStreamType::TRTCVideoStreamTypeBig, TRTCCloudCore::GetInstance()->getTRTCCloud(), true);
+                m_pVideoView->SetRenderInfo(info._userId, TRTCVideoStreamType::TRTCVideoStreamTypeBig, true);
                 m_pVideoView->SetRenderMode(TXLiveAvVideoView::EVideoRenderModeFit);
             }
 
             m_pVideoView->SetPause(false);
             TRTCCloudCore::GetInstance()->startPreview(true);
+            
             m_bStartLocalPreview = true;
         }
         else
@@ -1902,8 +2165,10 @@ void TRTCSettingViewController::UpdateMicDevice()
             }
             pDeviceCombo->Add(pElement);
         }
-        if (selectIndex >= 0)
+        if (selectIndex >= 0) {
+            is_init_device_combo_list_ = true;
             pDeviceCombo->SelectItem(selectIndex);
+        }
     }
 }
 
@@ -1927,8 +2192,10 @@ void TRTCSettingViewController::UpdateSpeakerDevice()
             }
             pDeviceCombo->Add(pElement);
         }
-        if (selectIndex >= 0)
+        if (selectIndex >= 0) {
+            is_init_device_combo_list_ = true;
             pDeviceCombo->SelectItem(selectIndex);
+        }
     }
 }
 
@@ -1948,6 +2215,7 @@ void TRTCSettingViewController::ResetBeautyConfig()
 
 void TRTCSettingViewController::stopAllTestSetting()
 {
+
     if (m_bStartLocalPreview)
         TRTCCloudCore::GetInstance()->stopPreview(true);
     if (m_bStartTestMic)
@@ -1956,12 +2224,7 @@ void TRTCSettingViewController::stopAllTestSetting()
         TRTCCloudCore::GetInstance()->getTRTCCloud()->stopSpeakerDeviceTest();
     if (m_bStartTestNetwork)
         TRTCCloudCore::GetInstance()->getTRTCCloud()->stopSpeedTest();
-    if (m_bStartTestBGM)
-        TRTCCloudCore::GetInstance()->getTRTCCloud()->stopBGM();
-#ifndef _WIN64
-    if (m_bStartSystemVoice)
-        TRTCCloudCore::GetInstance()->getTRTCCloud()->stopSystemAudioLoopback();
-#endif
+
     TRTCCloudCore::GetInstance()->getTRTCCloud()->stopAllAudioEffects();
 
     if (m_bMuteRemotesAudio)
@@ -1994,7 +2257,94 @@ void TRTCSettingViewController::stopAllTestSetting()
             CDataCenter::GetInstance()->m_strSocks5ProxyPort = _wtoi(strPort.c_str());
         }
     }
+}
 
+void TRTCSettingViewController::updateRoleUi()
+{
+    TRTCRoleType roleType = CDataCenter::GetInstance()->m_roleType;
+    COptionUI* pRoleAnchor = static_cast<COptionUI*>(m_pmUI.FindControl(_T("role_anchor")));
+    COptionUI* pRoleAudience = static_cast<COptionUI*>(m_pmUI.FindControl(_T("role_audience")));
+    if (CDataCenter::GetInstance()->m_sceneParams == TRTCAppSceneLIVE || CDataCenter::GetInstance()->m_sceneParams == TRTCAppSceneVoiceChatRoom)
+    {
+        if (pRoleAnchor && pRoleAudience)
+        {
+            pRoleAnchor->SetEnabled(true);
+            pRoleAudience->SetEnabled(true);
+
+            pRoleAnchor->Selected(false);
+            pRoleAudience->Selected(false);
+
+            if (roleType == TRTCRoleAnchor)
+            {
+                pRoleAnchor->Selected(true);
+
+                CHorizontalLayoutUI* pHLayout = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("livetype")));
+                pHLayout->SetVisible(false);
+            }
+            if (roleType == TRTCRoleAudience)
+            {
+                pRoleAudience->Selected(true);
+                LocalUserInfo& _loginInfo = CDataCenter::GetInstance()->getLocalUserInfo();
+                if (_loginInfo._bEnterRoom&& is_init_windows_finished)
+                {
+                    CHorizontalLayoutUI* pHLayout = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("livetype")));
+                    pHLayout->SetVisible(true);
+
+                    if (CDataCenter::GetInstance()->m_emLivePlayerSourceType == TRTC_RTC)
+                    {
+                        COptionUI* pRTC = static_cast<COptionUI*>(m_pmUI.FindControl(_T("trtc_rtc")));
+                        pRTC->Selected(true);
+                    }
+                    else
+                    {
+                        COptionUI* pCDN = static_cast<COptionUI*>(m_pmUI.FindControl(_T("trtc_cdn")));
+                        pCDN->Selected(true);
+                    }
+                }
+              
+            }
+        }
+    }
+    else
+    {
+        if (pRoleAnchor && pRoleAudience)
+        {
+            pRoleAnchor->SetEnabled(true);
+            pRoleAudience->SetEnabled(false);
+
+            pRoleAnchor->Selected(false);
+            pRoleAudience->Selected(false);
+
+            CHorizontalLayoutUI* pHLayout = static_cast<CHorizontalLayoutUI*>(m_pmUI.FindControl(_T("livetype")));
+            pHLayout->SetVisible(false);
+
+            if (roleType == TRTCRoleAnchor)
+            {
+                pRoleAnchor->Selected(true);
+            }
+        }
+    }
+}
+
+void TRTCSettingViewController::UpdateAudioQualityUi()
+{
+    if (CDataCenter::GetInstance()->m_sceneParams == TRTCAppSceneVideoCall ||
+        CDataCenter::GetInstance()->m_sceneParams ==  TRTCAppSceneAudioCall) {
+        CComboUI* audio_quality_combo = static_cast<CComboUI*>(m_pmUI.FindControl(_T("combo_audio_quality")));
+        if (CDataCenter::GetInstance()->audio_quality_ == TRTCAudioQualityUnSelect && audio_quality_combo) {
+            is_init_audio_quality_combo = true;
+            audio_quality_combo->SelectItem(0);
+        }
+    }
+    else
+    {
+        CComboUI* audio_quality_combo = static_cast<CComboUI*>(m_pmUI.FindControl(_T("combo_audio_quality")));
+        if (CDataCenter::GetInstance()->audio_quality_ == TRTCAudioQualityUnSelect && audio_quality_combo)
+        {
+            is_init_audio_quality_combo = true;
+            audio_quality_combo->SelectItem(1);
+        }
+    }
 }
 
 void TRTCSettingViewController::updateVideoBitrateUi()
@@ -2061,7 +2411,7 @@ LRESULT TRTCSettingViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARA
     else if (uMsg == WM_CLOSE)
     {
         //退出所有功能测试
-        m_pVideoView->RemoveEngine(TRTCCloudCore::GetInstance()->getTRTCCloud());
+        m_pVideoView->RemoveRenderInfo();
         stopAllTestSetting();
 
     }
@@ -2118,6 +2468,29 @@ LRESULT TRTCSettingViewController::HandleMessage(UINT uMsg, WPARAM wParam, LPARA
         {
             m_pProgressTestSpeaker->SetValue(volume);
         }
+    }
+    else if(uMsg == WM_USER_CMD_OnRecordError)
+    {
+        std::string * msg = (std::string *)wParam;
+        uint32_t nRet = lParam;
+        DoRecordError(nRet, *msg);   
+        delete msg;
+        msg = nullptr;
+
+    }
+    else if(uMsg == WM_USER_CMD_OnRecordComplete)
+    {
+        std::string * msg = (std::string *)wParam;
+        DoRecordComplete(*msg);
+        delete msg;
+        msg = nullptr;
+
+    }
+    else if(uMsg == WM_USER_CMD_OnRecordProgress)
+    {
+        uint32_t duration = wParam;
+        uint32_t filesize = lParam;
+        DoRecordProgress(duration, filesize);
     }
     LRESULT lRes = 0;
     if (m_pmUI.MessageHandler(uMsg, wParam, lParam, lRes))

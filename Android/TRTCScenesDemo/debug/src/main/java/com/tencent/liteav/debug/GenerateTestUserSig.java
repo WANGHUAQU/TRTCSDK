@@ -63,7 +63,7 @@ public class GenerateTestUserSig {
      * 注意：该方案仅适用于调试Demo，正式上线前请将 UserSig 计算代码和密钥迁移到您的后台服务器上，以避免加密密钥泄露导致的流量盗用。
      * 文档：https://cloud.tencent.com/document/product/269/32688#Server
      */
-    private static final String SECRETKEY = "PLACEHOLDER";
+    private static final String SECRETKEY = "";
 
     /**
      * 计算 UserSig 签名
@@ -154,11 +154,8 @@ public class GenerateTestUserSig {
             hmac.init(keySpec);
             byte[] byteSig = hmac.doFinal(contentToBeSigned.getBytes("UTF-8"));
             return new String(Base64.encode(byteSig, Base64.NO_WRAP));
-        } catch (UnsupportedEncodingException e) {
-            return "";
-        } catch (NoSuchAlgorithmException e) {
-            return "";
-        } catch (InvalidKeyException e) {
+        } catch (Exception e) {
+            e.printStackTrace();
             return "";
         }
     }

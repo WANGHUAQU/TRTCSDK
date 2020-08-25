@@ -4,6 +4,11 @@
 #include "TrtcUtil.h"
 #include "util/Base.h"
 #include <mutex>
+#include "util/md5.h"
+#include <strstream>
+#include <iostream>
+#include <iomanip>
+#include "GenerateTestUserSig.h"
 //////////////////////////////////////////////////////////////////////////CDataCenter
 
 static std::shared_ptr<CDataCenter> s_pInstance;
@@ -60,6 +65,8 @@ CDataCenter::CDataCenter()
     info16.init(900, 400, 1600);
     VideoResBitrateTable& info17 = m_videoConfigMap[TRTCVideoResolution_1280_720];
     info17.init(1250, 500, 2000);     
+    VideoResBitrateTable& info18 = m_videoConfigMap[TRTCVideoResolution_1920_1080];
+    info18.init(2000, 1000, 3000);
 
     m_sceneParams = TRTCAppSceneVideoCall;
 }
@@ -241,6 +248,12 @@ void CDataCenter::Init()
     else
         m_bCDNMixTranscoding = false;
 
+    bRet = m_pConfigMgr->GetValue(INI_ROOT_KEY, INI_KEY_PUBLISH_SCREEN_IN_BIG_STREAM, strParam);
+    if (bRet)
+        m_bPublishScreenInBigStream = _wtoi(strParam.c_str());
+    else
+        m_bPublishScreenInBigStream = false;
+
     bRet = m_pConfigMgr->GetValue(INI_ROOT_KEY, INI_KEY_MIX_TEMP_ID, strParam);
     if (bRet)
         m_mixTemplateID = (TRTCAppScene)_wtoi(strParam.c_str());
@@ -344,7 +357,8 @@ void CDataCenter::WriteEngineConfig()
     m_pConfigMgr->SetValue(INI_ROOT_KEY, INI_KEY_CLOUD_MIX_TRANSCODING, strFormat.GetData());
     strFormat.Format(L"%d", m_mixTemplateID);
     m_pConfigMgr->SetValue(INI_ROOT_KEY, INI_KEY_MIX_TEMP_ID, strFormat.GetData());
-
+    strFormat.Format(L"%d", m_bPublishScreenInBigStream);
+    m_pConfigMgr->SetValue(INI_ROOT_KEY, INI_KEY_PUBLISH_SCREEN_IN_BIG_STREAM, strFormat.GetData());
     /*
     strFormat.Format(L"%d", m_micVolume);
     m_pConfigMgr->SetValue(INI_ROOT_KEY, INI_KEY_MIC_VOLUME, strFormat.GetData());
@@ -372,16 +386,28 @@ CDataCenter::BeautyConfig & CDataCenter::GetBeautyConfig()
     return m_beautyConfig;
 }
 
-RemoteUserInfo & CDataCenter::FindRemoteUser(std::string userId)
+RemoteUserInfo* CDataCenter::FindRemoteUser(std::string userId)
 {
     std::map<std::string, RemoteUserInfo>::iterator iter;
     iter = m_remoteUser.find(userId);
     if(iter != m_remoteUser.end())
     {
-        return iter->second;
+        return &iter->second;
     }
-    RemoteUserInfo info;
-    return info;
+    return nullptr;
+}
+
+std::string CDataCenter::GetCdnUrl(const std::string & strUserId)
+{
+    if (m_localInfo._bEnterRoom == false)
+    {
+        return "";
+    }
+    std::string  strMixStreamId = format("%d_%d_%s_main", GenerateTestUserSig::SDKAPPID, m_localInfo._roomId, strUserId.c_str());
+
+    std::string strUrl = format("http://%d.liveplay.myqcloud.com/live/%s.flv", GenerateTestUserSig::BIZID, strMixStreamId.c_str());
+
+    return strUrl;
 }
 
 void CDataCenter::addRemoteUser(std::string userId, bool bClear)
@@ -409,4 +435,45 @@ void CDataCenter::removeRemoteUser(std::string userId)
     {
          m_remoteUser.erase(iter);
     }
+}
+
+bool CDataCenter::getAudioAvaliable(std::string userId)
+{
+    if (userId.compare(m_localInfo._userId) == 0)
+    {
+        return m_localInfo.publish_audio;
+    }
+    else 
+    {
+        auto iter = m_remoteUser.find(userId);
+        if (iter != m_remoteUser.end())
+        {
+            return (iter->second.available_audio && iter->second.subscribe_audio);
+        }
+    }
+    return false;
+}
+
+bool CDataCenter::getVideoAvaliable(std::string userId, TRTCVideoStreamType type)
+{
+    if (userId.compare(m_localInfo._userId) == 0)
+    {
+        return m_localInfo.publish_main_video;
+    }
+    else
+    {
+        auto iter = m_remoteUser.find(userId);
+        if (iter != m_remoteUser.end())
+        {
+            if (type == TRTCVideoStreamTypeSub)
+            {
+                return (iter->second.available_sub_video && iter->second.subscribe_sub_video);
+            }
+            else
+            {
+                return (iter->second.available_main_video && iter->second.subscribe_main_video);
+            }
+        }
+    }
+    return false;
 }

@@ -10,6 +10,7 @@ using namespace DuiLib;
 #include <string>
 #include "TRTCCloudCallback.h"
 
+
 class TXLiveAvVideoView;
 class TRTCSettingViewControllerNotify {
 public:
@@ -21,12 +22,19 @@ class TRTCSettingViewController
     , public INotifyUI
     , public IDialogBuilderCallback
     , public ITRTCCloudCallback
+
 {
 public:
     enum SettingTagEnum {
         SettingTag_Normal,
         SettingTag_Audio,
         SettingTag_Video,
+    };
+    enum BGM_MusicStatus
+    {
+        BGM_Music_Play,
+        BGM_Music_Pause,
+        BGM_Music_Stop,
     };
 public: //virture
     TRTCSettingViewController(SettingTagEnum tagType, HWND parentHwnd);
@@ -43,9 +51,11 @@ public: //overwrite
     virtual LRESULT HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam);
 public: //cb
     virtual void Notify(TNotifyUI& msg);
-    virtual void NotifyAudioEffectTab(TNotifyUI& msg);
+    virtual void NotifyAudioTab(TNotifyUI& msg);
     virtual void NotifyOtherTab(TNotifyUI& msg);
     virtual void NotifyMixTab(TNotifyUI& msg);
+    virtual void NotifyRecordTab(TNotifyUI& msg);
+    virtual void NotifyAudioRecord(TNotifyUI& msg);
     virtual CControlUI* CreateControl(LPCTSTR pstrClass);
 
     //ITRTCCloudCallback
@@ -59,16 +69,22 @@ public: //cb
     virtual void onSpeedTest(const TRTCSpeedTestResult& currentResult, uint32_t finishedCount, uint32_t totalCount);
     virtual void onTestMicVolume(uint32_t volume);
     virtual void onTestSpeakerVolume(uint32_t volume);
+
+   
+    void DoRecordError (int nRet,std::string msg);
+    void DoRecordComplete (std::string path);
+    void DoRecordProgress(int duration,int fileSize);
+
 private:
     static void addRef();
     static void subRef();
     void InitWindow();
     void InitNormalTab();
     void InitAudioTab();
-    void InitAudioEffectTab();
     void InitVideoTab();
     void InitOtherTab();
     void InitMixTab();
+    void InitRecordTab();
     void UpdateCameraDevice();
     void UpdateMicDevice();
     void UpdateSpeakerDevice();
@@ -76,6 +92,8 @@ private:
 
     void stopAllTestSetting();
 private:
+    void updateRoleUi();
+    void UpdateAudioQualityUi();
     void updateVideoBitrateUi();
     bool isCustomUploaderStreamIdValid(const std::string &streamId);
 public:
@@ -91,17 +109,17 @@ public:
     bool m_bStartTestMic = false;
     bool m_bStartTestSpeaker = false;
     bool m_bStartTestNetwork = false;
-    bool m_bStartSystemVoice = false;
-
     bool m_bMuteRemotesAudio = false;
     TRTCAudioEffectParam* m_audioEffectParam1;
     TRTCAudioEffectParam* m_audioEffectParam2;
     TRTCAudioEffectParam* m_audioEffectParam3;
 
-    bool m_bStartTestBGM = false;
-    int m_nBGMPublishVolume = 100;
-    int m_nBGMPlayoutVolume = 100;
+    bool is_init_device_combo_list_ = false;
+    bool is_init_windows_finished = false;
+    bool is_init_audio_quality_combo = false;
 
     static int m_ref;
     static std::vector<TRTCSettingViewControllerNotify*> vecNotifyList;
+
+    wstring m_strAudioRecordFile;
 };
